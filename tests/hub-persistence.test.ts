@@ -23,4 +23,27 @@ describe("persistent hub store", () => {
       await rm(directory, { recursive: true, force: true })
     }
   })
+
+  it("preserves concurrent messages sent through one file-backed hub", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentsymphony-hub-store-"))
+    const storePath = join(directory, "hub-store.json")
+    try {
+      const hub = new MemoryAgentSymphonyHub({}, new FileHubStore(storePath))
+      const parent = await hub.registerInstance({ id: "parent", name: "parent", directory: "/repo" })
+      const child = await hub.registerInstance({ id: "child", name: "child", directory: "/repo" })
+      const conversation = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "Concurrent", threadName: "concurrent" })
+
+      await Promise.all([
+        hub.sendMessage({ conversationId: conversation.id, fromInstanceId: parent.id, content: "one" }),
+        hub.sendMessage({ conversationId: conversation.id, fromInstanceId: parent.id, content: "two" }),
+      ])
+
+      await expect(hub.listMessagesForConversation(conversation.id)).resolves.toEqual([
+        expect.objectContaining({ content: "one" }),
+        expect.objectContaining({ content: "two" }),
+      ])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
 })

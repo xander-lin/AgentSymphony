@@ -10,7 +10,7 @@ AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode ag
 - Parent agents create conversations by binding a parent instance to a target child instance.
 - A pair of OpenCode instances can have at most one hub conversation at a time; duplicate create requests return the existing conversation.
 - Messages are delivered through the hub to the target instance plugin.
-- The target plugin injects incoming text into its own TUI via OpenCode's TUI API (`appendPrompt` + `submitPrompt`).
+- The target plugin injects incoming text into its own OpenCode session with `session.promptAsync`, so messages show in the TUI and are queued reliably even while the model is busy.
 - The child agent experiences the message as input arriving in its own interactive OpenCode instance, not as a hidden `opencode run` call.
 - Conversations carry a creator marker (`createdByInstanceId`) and a visible `threadName`. Injected prompts hide routing IDs but show the thread name and whether this instance created the thread. The target agent can reply with `agentsymphony_hub_reply`; if multiple threads are active, it can pass the visible thread name and the plugin resolves the route.
 

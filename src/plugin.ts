@@ -20,16 +20,18 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   const service = new AgentSymphonyService(bus, runner, terminal)
   const identityStore = new FileInstanceIdentityStore()
   let identity: InstanceIdentity | undefined
+  let currentSessionId: string | undefined
   const bootstrapSessionId = process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   delete process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   const bindSessionIdentity = async (sessionId: string): Promise<InstanceIdentity> => {
+    currentSessionId = sessionId
     identity = await identityStore.load(directory, sessionId, identity)
     return identity
   }
   if (bootstrapSessionId) await bindSessionIdentity(bootstrapSessionId)
   const hub = new HttpAgentSymphonyHubClient()
   const replyContext = new MemoryReplyContextStore()
-  const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client), replyContext })
+  const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client, () => currentSessionId, directory), replyContext })
 
   return {
     tool: {

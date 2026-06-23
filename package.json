@@ -5,18 +5,27 @@
   "type": "module",
   "description": "OpenCode-only agent-to-agent collaboration plugin.",
   "scripts": {
+    "dashboard:build": "vite build dashboard --outDir ../dist/dashboard",
     "hub": "tsx src/hub/daemon.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "npm run typecheck && npm run test"
+    "verify": "npm run typecheck && npm run dashboard:build && npm run test"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "latest"
+    "@opencode-ai/plugin": "latest",
+    "@xyflow/react": "^12.11.1",
+    "elkjs": "^0.11.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@types/node": "latest",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
     "tsx": "latest",
     "typescript": "latest",
+    "vite": "^8.0.16",
     "vitest": "latest"
   }
 }

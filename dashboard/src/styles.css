@@ -1,0 +1,51 @@
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+body { background: #070911; color: #edf2ff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.app { width: 100%; height: 100%; position: relative; }
+.hud { position: absolute; left: 20px; top: 18px; right: 20px; z-index: 10; display: flex; justify-content: space-between; gap: 18px; pointer-events: none; }
+.hud h1 { margin: 0; font-size: 34px; letter-spacing: -0.06em; }
+.hud p { margin: 4px 0 0; color: #94a3b8; }
+.stats { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-content: flex-start; }
+.stats span { border: 1px solid #25324a; background: rgba(15, 23, 42, .88); color: #cbd5e1; border-radius: 999px; padding: 7px 12px; font-size: 13px; }
+.stats b { color: #fff; }
+.react-flow { background: radial-gradient(circle at 20% 0%, rgba(79,70,229,.2), transparent 32rem), radial-gradient(circle at 90% 20%, rgba(14,165,233,.14), transparent 26rem), #070911; }
+.react-flow__node { border-radius: 22px; }
+.react-flow__handle.node-handle { width: 13px; height: 13px; border: 2px solid #0f172a; background: #e0e7ff; box-shadow: 0 0 0 4px rgba(129, 140, 248, .18), 0 0 16px rgba(129, 140, 248, .7); opacity: 1; }
+.react-flow__handle.source-handle { right: -7px; background: #38bdf8; }
+.react-flow__handle.target-handle { left: -7px; background: #a5b4fc; }
+.node-card { box-sizing: border-box; border: 1px solid #2a3852; border-radius: 22px; background: rgba(13, 21, 36, .96); box-shadow: 0 18px 52px rgba(0,0,0,.32); color: #edf2ff; padding: 16px; }
+.instance-card { width: 280px; min-height: 118px; border-color: rgba(52, 211, 153, .55); }
+.thread-card { width: 340px; min-height: 168px; border-color: rgba(129, 140, 248, .60); }
+.eyebrow { color: #93a4be; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 8px; }
+.node-title { font-weight: 800; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.node-meta { margin-top: 10px; color: #93a4be; font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+code { color: #a5b4fc; background: #111827; padding: 2px 7px; border-radius: 8px; }
+.thread-name { font-size: 24px; font-weight: 860; letter-spacing: -0.05em; }
+.thread-title { margin-top: 5px; color: #cbd5e1; }
+.badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.badges span { border-radius: 999px; padding: 4px 9px; font-size: 12px; border: 1px solid #334155; background: #111827; color: #dbeafe; }
+.queued { color: #fbbf24; } .delivered { color: #60a5fa; } .acknowledged { color: #34d399; }
+.react-flow__edge { z-index: 2; }
+.react-flow__edge-path { filter: drop-shadow(0 0 8px rgba(129, 140, 248, .42)); }
+.creator-edge .react-flow__edge-path { stroke: #a5b4fc; stroke-width: 4; }
+.target-edge .react-flow__edge-path { stroke: #38bdf8; stroke-width: 4; stroke-dasharray: 8 6; }
+.react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 10 8; animation-duration: .7s; }
+.context-menu { position: fixed; z-index: 30; min-width: 190px; border: 1px solid #25324a; background: rgba(7, 12, 24, .94); border-radius: 14px; padding: 6px; box-shadow: 0 18px 60px rgba(0,0,0,.45); }
+.context-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: #dbeafe; padding: 9px 10px; border-radius: 10px; cursor: pointer; }
+.context-menu button:hover { background: rgba(99, 102, 241, .18); }
+.context-menu button + button { margin-top: 2px; }
+.drawer { position: fixed; right: 18px; top: 86px; bottom: 18px; z-index: 20; width: min(420px, calc(100vw - 36px)); border: 1px solid #25324a; background: rgba(7, 12, 24, .94); backdrop-filter: blur(16px); border-radius: 22px; padding: 18px; overflow: auto; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
+.drawer h2 { margin: 0 0 6px; letter-spacing: -0.04em; }
+.close { float: right; border: 1px solid #334155; background: #111827; color: #dbeafe; border-radius: 999px; padding: 6px 10px; cursor: pointer; }
+.message-stack { display: grid; gap: 12px; margin-top: 18px; }
+.message { width: min(82%, 320px); border: 1px solid #25324a; border-radius: 18px; background: rgba(15, 23, 42, .72); padding: 12px; box-shadow: 0 14px 36px rgba(0,0,0,.24); }
+.message.left { justify-self: start; border-bottom-left-radius: 6px; }
+.message.right { justify-self: end; border-bottom-right-radius: 6px; border-color: rgba(129, 140, 248, .58); background: linear-gradient(135deg, rgba(79, 70, 229, .34), rgba(15, 23, 42, .86)); }
+.message-speaker, .message-footer { display: flex; gap: 8px; justify-content: space-between; align-items: center; color: #94a3b8; font-size: 12px; }
+.message-speaker time { color: #64748b; white-space: nowrap; }
+.message p { color: #dbeafe; line-height: 1.5; white-space: pre-wrap; margin: 9px 0; overflow-wrap: anywhere; }
+.message-footer code { font-size: 11px; }
+.facts { display: grid; gap: 8px; margin: 18px 0 0; }
+.facts div { border: 1px solid #25324a; border-radius: 14px; background: rgba(15, 23, 42, .5); padding: 10px; }
+.facts dt { color: #93a4be; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; }
+.facts dd { margin: 5px 0 0; color: #e2e8f0; overflow-wrap: anywhere; }
+.muted { color: #94a3b8; }

@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
+import { readFile } from "node:fs/promises"
 import type { AddressInfo } from "node:net"
+import { extname, join, normalize } from "node:path"
 import { renderHubDashboard } from "./dashboard.ts"
 import type { AgentSymphonyHub } from "./types.ts"
 
@@ -36,7 +38,8 @@ async function route(hub: AgentSymphonyHub, request: IncomingMessage, response: 
   const method = request.method ?? "GET"
   const parts = url.pathname.split("/").filter(Boolean)
 
-  if (method === "GET" && url.pathname === "/") return writeHtml(response, 200, renderHubDashboard())
+  if (method === "GET" && url.pathname === "/") return serveDashboardIndex(response)
+  if (method === "GET" && url.pathname.startsWith("/assets/")) return serveDashboardAsset(url.pathname, response)
   if (method === "GET" && url.pathname === "/health") return writeJson(response, 200, { ok: true })
   if (method === "GET" && url.pathname === "/monitor/snapshot") return writeJson(response, 200, await getMonitorSnapshot(hub))
   if (method === "GET" && url.pathname === "/instances") return writeJson(response, 200, await hub.listInstances())
@@ -72,4 +75,37 @@ function writeHtml(response: ServerResponse, status: number, body: string): void
 async function getMonitorSnapshot(hub: AgentSymphonyHub) {
   if (hub.getMonitorSnapshot) return hub.getMonitorSnapshot()
   return { instances: await hub.listInstances(), conversations: [], messages: [] }
+}
+
+async function serveDashboardIndex(response: ServerResponse): Promise<void> {
+  try {
+    writeHtml(response, 200, await readFile(join(process.cwd(), "dist", "dashboard", "index.html"), "utf8"))
+  } catch {
+    writeHtml(response, 200, renderHubDashboard())
+  }
+}
+
+async function serveDashboardAsset(pathname: string, response: ServerResponse): Promise<void> {
+  const relative = normalize(pathname.replace(/^\/+/, ""))
+  if (relative.startsWith("..")) return writeJson(response, 400, { error: "Invalid asset path" })
+  try {
+    const body = await readFile(join(process.cwd(), "dist", "dashboard", relative))
+    response.writeHead(200, { "content-type": contentType(relative) })
+    response.end(body)
+  } catch {
+    writeJson(response, 404, { error: `Unknown asset: ${pathname}` })
+  }
+}
+
+function contentType(pathname: string): string {
+  switch (extname(pathname)) {
+    case ".js":
+      return "text/javascript; charset=utf-8"
+    case ".css":
+      return "text/css; charset=utf-8"
+    case ".svg":
+      return "image/svg+xml"
+    default:
+      return "application/octet-stream"
+  }
 }

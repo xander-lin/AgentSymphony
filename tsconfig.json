@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -11,5 +12,5 @@
     "types": ["node", "vitest/globals"],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", ".opencode/plugins/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", ".opencode/plugins/**/*.ts", "tests/**/*.ts", "dashboard/src/**/*.ts", "dashboard/src/**/*.tsx"]
 }

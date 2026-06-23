@@ -25,8 +25,6 @@ describe("HTTP AgentSymphony hub", () => {
       expect(conversations).toEqual([expect.objectContaining({ id: conversation.id })])
       expect(messages).toEqual([expect.objectContaining({ content: "Route over HTTP." })])
       expect(dashboard).toContain("AgentSymphony Hub")
-      expect(dashboard).toContain("Conversation Cards")
-      expect(dashboard).toContain("data-thread")
       expect(snapshot.instances).toHaveLength(2)
       expect(snapshot.conversations).toHaveLength(1)
       expect(snapshot.messages).toHaveLength(1)

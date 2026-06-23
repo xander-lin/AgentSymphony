@@ -5,6 +5,31 @@ import { MemoryReplyContextStore } from "../src/hub/reply-context.ts"
 import { MockTuiController } from "../src/tui/mock.ts"
 
 describe("startHubConnector", () => {
+  it("waits to register until a session identity is available", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    const tui = new MockTuiController()
+    const replyContext = new MemoryReplyContextStore()
+    let identity: { id: string; name: string; directory: string } | undefined
+    const connector = startHubConnector({
+      hub,
+      tui,
+      replyContext,
+      pollIntervalMs: 10,
+      identity: () => identity,
+    })
+
+    try {
+      await waitFor(() => connector.getStatus().error === "Waiting for OpenCode session identity.")
+      expect(await hub.listInstances()).toEqual([])
+
+      identity = { id: "child", name: "child", directory: "/repo" }
+      await waitFor(() => connector.getStatus().connected)
+      expect(await hub.listInstances()).toEqual([expect.objectContaining({ id: "child" })])
+    } finally {
+      connector.stop()
+    }
+  })
+
   it("polls hub messages and injects them into the local TUI", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })

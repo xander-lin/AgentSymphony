@@ -1,8 +1,9 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { startHubConnector } from "./hub/connector.ts"
 import { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
+import { launchHubReceiver } from "./hub/receiver-launcher.ts"
 import { MemoryReplyContextStore } from "./hub/reply-context.ts"
-import { FileInstanceIdentityStore } from "./instance/identity.ts"
+import { FileInstanceIdentityStore, type InstanceIdentity } from "./instance/identity.ts"
 import { FileMessageBus } from "./messages/file.ts"
 import { CliOpenCodeRunner } from "./runtime/cli.ts"
 import { AgentSymphonyService } from "./symphony/service.ts"
@@ -14,10 +15,15 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   const runner = new CliOpenCodeRunner()
   const terminal = new LocalTerminalLauncher(directory)
   const service = new AgentSymphonyService(bus, runner, terminal)
-  const identity = await new FileInstanceIdentityStore().load(directory)
+  const identityStore = new FileInstanceIdentityStore()
+  let identity: InstanceIdentity | undefined
+  const bindSessionIdentity = async (sessionId: string): Promise<InstanceIdentity> => {
+    identity = await identityStore.load(directory, sessionId, identity)
+    return identity
+  }
   const hub = new HttpAgentSymphonyHubClient()
   const replyContext = new MemoryReplyContextStore()
-  const hubConnector = startHubConnector({ hub, identity, tui: new OpenCodeTuiController(client), replyContext })
+  const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client), replyContext })
 
   return {
     tool: {
@@ -26,7 +32,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         args: {},
         async execute() {
           const hubState = hubConnector.getStatus()
-          return respond("hub.status", hubState.connected ? `Connected to AgentSymphony hub as ${identity.id}.` : "AgentSymphony hub is not connected.", {
+          return respond("hub.status", hubState.connected ? `Connected to AgentSymphony hub as ${hubState.instance.id}.` : "AgentSymphony hub is not connected.", {
             connected: hubState.connected,
             instance: hubState.connected ? hubState.instance : undefined,
             identity,
@@ -42,6 +48,24 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           return respond("hub.instances", `Listed ${instances.length} AgentSymphony hub instances.`, { instances })
         },
       }),
+      agentsymphony_hub_launch_receiver: tool({
+        description: "Launch a new OpenCode receiver TUI with a bootstrap prompt and wait for hub registration.",
+        args: {
+          title: tool.schema.string().optional().describe("Optional display title for the launched receiver."),
+          prompt: tool.schema.string().optional().describe("Bootstrap prompt to submit when the receiver TUI starts."),
+          timeoutMs: tool.schema.number().optional().describe("Maximum time to wait for receiver registration."),
+        },
+        async execute(args) {
+          const result = await launchHubReceiver({
+            hub,
+            directory,
+            title: args.title,
+            prompt: args.prompt,
+            timeoutMs: args.timeoutMs,
+          })
+          return respond("hub.receiver.launched", `Launched receiver ${result.instance.id}.`, result)
+        },
+      }),
       agentsymphony_hub_create_conversation: tool({
         description: "Create a hub-routed AgentSymphony conversation targeting another OpenCode instance.",
         args: {
@@ -50,8 +74,10 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           threadName: tool.schema.string().optional().describe("Short name the agent can use to identify and reply in this conversation."),
         },
         async execute(args) {
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
           const conversation = await hub.createConversation({
-            parentInstanceId: identity.id,
+            parentInstanceId: currentIdentity.id,
             targetInstanceId: args.targetInstanceId,
             title: args.title,
             threadName: args.threadName,
@@ -66,9 +92,11 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           message: tool.schema.string().describe("Message to inject into the target instance's TUI."),
         },
         async execute(args) {
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
           const message = await hub.sendMessage({
             conversationId: args.conversationId,
-            fromInstanceId: identity.id,
+            fromInstanceId: currentIdentity.id,
             content: args.message,
           })
           return respond("hub.message.sent", `Queued hub message ${message.id}.`, message)
@@ -81,11 +109,13 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           message: tool.schema.string().describe("Reply message to send back to the originating AgentSymphony conversation."),
         },
         async execute(args) {
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
           const context = args.thread ? await replyContext.getByThread(args.thread) : await replyContext.getLatest()
           if (!context) throw new Error("No inbound AgentSymphony conversation is available to reply to.")
           const message = await hub.sendMessage({
             conversationId: context.conversationId,
-            fromInstanceId: identity.id,
+            fromInstanceId: currentIdentity.id,
             content: args.message,
           })
           return respond("hub.reply.sent", `Queued reply ${message.id}.`, { message, context })
@@ -95,13 +125,15 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         description: "List visible AgentSymphony reply threads known to this OpenCode instance.",
         args: {},
         async execute() {
-          const conversations = await hub.listConversationsForInstance(identity.id)
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
+          const conversations = await hub.listConversationsForInstance(currentIdentity.id)
           const contexts = await replyContext.list()
           const threads = conversations.map((conversation) => ({
             threadName: conversation.threadName,
             title: conversation.title,
             conversationId: conversation.id,
-            createdByThisInstance: conversation.createdByInstanceId === identity.id,
+            createdByThisInstance: conversation.createdByInstanceId === currentIdentity.id,
             parentInstanceId: conversation.parentInstanceId,
             targetInstanceId: conversation.targetInstanceId,
             updatedAt: conversation.updatedAt,
@@ -118,7 +150,9 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           includeContent: tool.schema.boolean().optional().describe("Whether to include message content. Defaults to true."),
         },
         async execute(args) {
-          const conversations = await hub.listConversationsForInstance(identity.id)
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
+          const conversations = await hub.listConversationsForInstance(currentIdentity.id)
           const conversation = conversations.find((candidate) => candidate.threadName === args.thread)
           if (!conversation) throw new Error(`Unknown AgentSymphony thread: ${args.thread}`)
           const messages = await hub.listMessagesForConversation(conversation.id, args.limit)
@@ -128,13 +162,13 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
               threadName: conversation.threadName,
               title: conversation.title,
               conversationId: conversation.id,
-              createdByThisInstance: conversation.createdByInstanceId === identity.id,
+              createdByThisInstance: conversation.createdByInstanceId === currentIdentity.id,
               updatedAt: conversation.updatedAt,
             },
             messages: messages.map((message) => ({
               id: message.id,
-              fromThisInstance: message.fromInstanceId === identity.id,
-              toThisInstance: message.toInstanceId === identity.id,
+              fromThisInstance: message.fromInstanceId === currentIdentity.id,
+              toThisInstance: message.toInstanceId === currentIdentity.id,
               createdAt: message.createdAt,
               status: message.status,
               content: includeContent ? message.content : undefined,
@@ -209,6 +243,21 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           return respond("conversations.list", `Listed ${conversations.length} AgentSymphony conversations.`, { conversations })
         },
       }),
+    },
+    async "chat.message"(input) {
+      await bindSessionIdentity(input.sessionID)
+    },
+    async "chat.params"(input) {
+      await bindSessionIdentity(input.sessionID)
+    },
+    async "command.execute.before"(input) {
+      await bindSessionIdentity(input.sessionID)
+    },
+    async "tool.execute.before"(input) {
+      await bindSessionIdentity(input.sessionID)
+    },
+    async "tool.execute.after"(input) {
+      await bindSessionIdentity(input.sessionID)
     },
   }
 }

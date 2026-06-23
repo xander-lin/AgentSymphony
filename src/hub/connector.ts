@@ -6,7 +6,7 @@ import type { AgentSymphonyHub, HubInstance } from "./types.ts"
 
 export interface HubConnectorOptions {
   hub: AgentSymphonyHub
-  identity: InstanceIdentity
+  identity: InstanceIdentity | (() => InstanceIdentity | undefined)
   tui: TuiController
   replyContext: ReplyContextStore
   pollIntervalMs?: number
@@ -31,12 +31,19 @@ export function startHubConnector(options: HubConnectorOptions): HubConnectorHan
     if (stopped || polling) return
     polling = true
     try {
+      const identity = typeof options.identity === "function" ? options.identity() : options.identity
+      if (!identity) {
+        status = { connected: false, error: "Waiting for OpenCode session identity." }
+        return
+      }
+      const shouldRegister = !status.connected || status.instance.id !== identity.id
       const instance = status.connected
+        && !shouldRegister
         ? await options.hub.heartbeat(status.instance.id)
         : await options.hub.registerInstance({
-            id: options.identity.id,
-            name: options.identity.name,
-            directory: options.identity.directory,
+            id: identity.id,
+            name: identity.name,
+            directory: identity.directory,
           })
       status = { connected: true, instance }
       const messages = await options.hub.pollMessages(instance.id)

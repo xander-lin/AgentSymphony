@@ -48,6 +48,59 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           })
         },
       }),
+      agentsymphony_hub_system_status: tool({
+        description: "Show the current AgentSymphony system state: this instance, live peers, threads, queued messages, and offline targets.",
+        args: {},
+        async execute() {
+          const hubState = hubConnector.getStatus()
+          const snapshot = await hub.getMonitorSnapshot()
+          const currentIdentity = identity
+          const liveInstanceIds = new Set(snapshot.instances.map((instance) => instance.id))
+          const visibleThreads = currentIdentity
+            ? snapshot.conversations
+                .filter((conversation) => conversation.parentInstanceId === currentIdentity.id || conversation.targetInstanceId === currentIdentity.id)
+                .map((conversation) => {
+                  const targetInstanceId = conversation.parentInstanceId === currentIdentity.id ? conversation.targetInstanceId : conversation.parentInstanceId
+                  const messages = snapshot.messages.filter((message) => message.conversationId === conversation.id)
+                  return {
+                    threadName: conversation.threadName,
+                    title: conversation.title,
+                    conversationId: conversation.id,
+                    createdByThisInstance: conversation.createdByInstanceId === currentIdentity.id,
+                    targetInstanceId,
+                    targetOnline: liveInstanceIds.has(targetInstanceId),
+                    messageCount: messages.length,
+                    queuedCount: messages.filter((message) => message.status === "queued").length,
+                    updatedAt: conversation.updatedAt,
+                  }
+                })
+            : []
+          return respond("hub.system_status", `AgentSymphony has ${snapshot.instances.length} live instances, ${snapshot.conversations.length} threads, and ${snapshot.messages.length} messages.`, {
+            current: {
+              connected: hubState.connected,
+              instance: hubState.connected ? hubState.instance : undefined,
+              identity: currentIdentity,
+              error: hubState.connected ? undefined : hubState.error,
+            },
+            counts: {
+              liveInstances: snapshot.instances.length,
+              threads: snapshot.conversations.length,
+              visibleThreads: visibleThreads.length,
+              messages: snapshot.messages.length,
+              queuedMessages: snapshot.messages.filter((message) => message.status === "queued").length,
+            },
+            liveInstances: snapshot.instances,
+            visibleThreads,
+            suggestedTools: {
+              sendExistingThread: "agentsymphony_hub_send_thread",
+              replyInboundThread: "agentsymphony_hub_reply",
+              readThreadHistory: "agentsymphony_hub_read_thread",
+              launchReceiver: "agentsymphony_hub_launch_receiver",
+              resumeReceiver: "agentsymphony_hub_resume_receiver",
+            },
+          })
+        },
+      }),
       agentsymphony_hub_list_instances: tool({
         description: "List OpenCode instances currently registered with the AgentSymphony hub.",
         args: {},
@@ -134,6 +187,29 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           return result.ok
             ? respond("hub.message.sent", `Queued hub message ${result.message.id}.`, result.message)
             : respondFailure("hub.message.target_offline", result.summary, result.data)
+        },
+      }),
+      agentsymphony_hub_send_thread: tool({
+        description: "Send a message to a visible AgentSymphony thread by thread name. Routing and conversation ids are resolved automatically.",
+        args: {
+          thread: tool.schema.string().describe("Visible AgentSymphony thread name."),
+          message: tool.schema.string().describe("Message to send to the other instance in this thread."),
+        },
+        async execute(args) {
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
+          const conversation = await findVisibleConversationByThread(hub, currentIdentity.id, args.thread)
+          if (!conversation) throw new Error(`Unknown AgentSymphony thread: ${args.thread}`)
+          const result = await sendHubMessageOrOfflineNotice({
+            hub,
+            directory,
+            conversationId: conversation.id,
+            fromInstanceId: currentIdentity.id,
+            content: args.message,
+          })
+          return result.ok
+            ? respond("hub.thread.sent", `Queued message ${result.message.id} to thread ${args.thread}.`, { message: result.message, thread: describeConversation(conversation) })
+            : respondFailure("hub.thread.target_offline", result.summary, { offline: result.data, thread: describeConversation(conversation) })
         },
       }),
       agentsymphony_hub_reply: tool({
@@ -333,6 +409,11 @@ async function sendHubMessageOrOfflineNotice(input: {
     }
   }
   return { ok: true, message: await input.hub.sendMessage({ conversationId: input.conversationId, fromInstanceId: input.fromInstanceId, content: input.content }) }
+}
+
+async function findVisibleConversationByThread(hub: HttpAgentSymphonyHubClient, instanceId: string, threadName: string): Promise<HubConversation | undefined> {
+  const conversations = await hub.listConversationsForInstance(instanceId)
+  return conversations.find((candidate) => candidate.threadName === threadName)
 }
 
 function describeConversation(conversation: HubConversation): Pick<HubConversation, "id" | "threadName" | "title" | "parentInstanceId" | "targetInstanceId"> {

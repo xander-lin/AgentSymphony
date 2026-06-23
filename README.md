@@ -30,8 +30,10 @@ AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode ag
 - `agentsymphony_list_conversations`: lists known child conversations.
 - `agentsymphony_hub_launch_receiver`: launches a new OpenCode receiver TUI, waits for hub registration, and returns the receiver session id when discoverable.
 - `agentsymphony_hub_resume_receiver`: resumes an existing OpenCode receiver session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement.
+- `agentsymphony_hub_system_status`: shows this instance, live peers, visible threads, queued counts, and suggested next tools.
 - `agentsymphony_hub_create_conversation`: creates a hub-routed thread targeting another registered OpenCode instance.
 - `agentsymphony_hub_send_message`: sends a message through a hub-routed conversation.
+- `agentsymphony_hub_send_thread`: sends to a visible thread by thread name, resolving routing automatically.
 - `agentsymphony_hub_reply`: replies to the latest inbound hub-routed thread, or a named thread.
 - `agentsymphony_hub_list_threads` and `agentsymphony_hub_read_thread`: inspect visible hub threads and recent message history on demand.
 

@@ -17,7 +17,7 @@ describe("HTTP AgentSymphony hub", () => {
       const conversations = await client.listConversationsForInstance(parent.id)
       const messages = await client.listMessagesForConversation(conversation.id)
       const dashboard = await fetch(server.url).then((response) => response.text())
-      const snapshot = await fetch(`${server.url}/monitor/snapshot`).then((response) => response.json() as Promise<{ instances: unknown[]; conversations: unknown[]; messages: unknown[] }>)
+      const snapshot = await client.getMonitorSnapshot()
 
       expect(inbox).toHaveLength(1)
       expect(inbox[0]?.content).toBe("Route over HTTP.")

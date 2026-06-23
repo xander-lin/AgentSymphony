@@ -34,6 +34,8 @@ describe("formatInjectedHubPrompt", () => {
     expect(prompt).toContain("Thread: reviewer")
     expect(prompt).toContain("Origin: created elsewhere")
     expect(prompt).toContain("agentsymphony_hub_reply")
+    expect(prompt).toContain("agentsymphony_hub_read_thread")
+    expect(prompt).toContain("agentsymphony_hub_system_status")
     expect(prompt).toContain("Please review the API.")
   })
 

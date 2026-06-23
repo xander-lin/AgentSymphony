@@ -52,6 +52,10 @@ export class HttpAgentSymphonyHubClient implements AgentSymphonyHub {
     return this.request(`/messages/${encodeURIComponent(messageId)}/ack`, { method: "POST" })
   }
 
+  getMonitorSnapshot(): Promise<{ instances: HubInstance[]; conversations: HubConversation[]; messages: HubMessage[] }> {
+    return this.request("/monitor/snapshot")
+  }
+
   private async request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: options.method ?? "GET",

@@ -229,7 +229,7 @@ function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread }: {
   )
 }
 
-function DetailsDrawer({ node, instancesById, onClose }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; onClose: () => void }) {
+function DetailsDrawer({ node, instancesById, conversations, onClose }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; conversations: HubConversation[]; onClose: () => void }) {
   if (!node) return null
   if (node.data.kind === "relationship") {
     const { relationship, messages } = node.data
@@ -261,12 +261,27 @@ function DetailsDrawer({ node, instancesById, onClose }: { node: Node<GraphNodeD
       </aside>
     )
   }
+  const { instance } = node.data
+  const relatedConversations = conversations
+    .filter((conversation) => conversation.parentInstanceId === instance.id || conversation.targetInstanceId === instance.id)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
   return (
     <aside className="drawer">
       <button type="button" className="close" onClick={onClose}>Close</button>
-      <h2>{node.data.instance.name}</h2>
-      <p className="muted">{node.data.instance.directory}</p>
-      <code>{node.data.instance.id}</code>
+      <h2>{instance.name}</h2>
+      <p className="muted">{instance.directory}</p>
+      <code>{instance.id}</code>
+      <dl className="facts">
+        <div><dt>Status</dt><dd>{instance.online === false ? "Offline historical node" : "Online"}</dd></div>
+        <div><dt>Last Seen</dt><dd>{formatTime(instance.lastSeenAt)}</dd></div>
+      </dl>
+      <h3>Related Senders</h3>
+      <div className="thread-list vertical">
+        {relatedConversations.length ? relatedConversations.map((conversation) => {
+          const counterpartId = conversation.parentInstanceId === instance.id ? conversation.targetInstanceId : conversation.parentInstanceId
+          return <span key={conversation.id}>{conversation.threadName} · {instanceLabel(instancesById, counterpartId)} · {instancesById.get(counterpartId)?.online === false ? "offline" : "online"}</span>
+        }) : <p className="muted">No historical links.</p>}
+      </div>
     </aside>
   )
 }
@@ -332,7 +347,7 @@ function Dashboard() {
         <MiniMap pannable zoomable />
       </ReactFlow>
       <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onInspect={(node) => { setSelected(node); setMenu(null) }} />
-      <DetailsDrawer node={selected} instancesById={instancesById} onClose={() => setSelected(null)} />
+      <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onClose={() => setSelected(null)} />
     </div>
   )
 }

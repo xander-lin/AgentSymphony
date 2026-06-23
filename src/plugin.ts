@@ -57,6 +57,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           const currentIdentity = identity
           const liveInstances = snapshot.instances.filter((instance) => instance.online !== false)
           const liveInstanceIds = new Set(liveInstances.map((instance) => instance.id))
+          const instancesById = new Map(snapshot.instances.map((instance) => [instance.id, instance]))
           const visibleThreads = currentIdentity
             ? snapshot.conversations
                 .filter((conversation) => conversation.parentInstanceId === currentIdentity.id || conversation.targetInstanceId === currentIdentity.id)
@@ -76,6 +77,32 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
                   }
                 })
             : []
+          const offlineTargets = []
+          for (const instance of snapshot.instances.filter((candidate) => candidate.online === false)) {
+            const relatedThreads = snapshot.conversations
+              .filter((conversation) => conversation.parentInstanceId === instance.id || conversation.targetInstanceId === instance.id)
+              .map((conversation) => {
+                const senderInstanceId = conversation.parentInstanceId === instance.id ? conversation.targetInstanceId : conversation.parentInstanceId
+                const messages = snapshot.messages.filter((message) => message.conversationId === conversation.id)
+                return {
+                  threadName: conversation.threadName,
+                  title: conversation.title,
+                  conversationId: conversation.id,
+                  senderInstanceId,
+                  senderName: instancesById.get(senderInstanceId)?.name,
+                  senderOnline: liveInstanceIds.has(senderInstanceId),
+                  messageCount: messages.length,
+                  queuedCount: messages.filter((message) => message.status === "queued").length,
+                  updatedAt: conversation.updatedAt,
+                }
+              })
+              .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+            offlineTargets.push({
+              instance,
+              relatedThreads,
+              resume: { tool: "agentsymphony_hub_resume_receiver", sessionId: await findSessionIdForInstance(directory, instance.id) },
+            })
+          }
           return respond("hub.system_status", `AgentSymphony has ${liveInstances.length} live instances, ${snapshot.instances.length} known instances, ${snapshot.conversations.length} threads, and ${snapshot.messages.length} messages.`, {
             current: {
               connected: hubState.connected,
@@ -88,12 +115,14 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
               knownInstances: snapshot.instances.length,
               threads: snapshot.conversations.length,
               visibleThreads: visibleThreads.length,
+              offlineTargets: offlineTargets.length,
               messages: snapshot.messages.length,
               queuedMessages: snapshot.messages.filter((message) => message.status === "queued").length,
             },
             liveInstances,
             knownInstances: snapshot.instances,
             visibleThreads,
+            offlineTargets,
             suggestedTools: {
               sendExistingThread: "agentsymphony_hub_send_thread",
               replyInboundThread: "agentsymphony_hub_reply",

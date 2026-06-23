@@ -28,6 +28,8 @@ code { color: #a5b4fc; background: #111827; padding: 2px 7px; border-radius: 8px
 .queued { color: #fbbf24; } .delivered { color: #60a5fa; } .acknowledged { color: #34d399; }
 .thread-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .thread-list span { border: 1px solid #334155; background: #0f172a; color: #c4b5fd; border-radius: 999px; padding: 5px 10px; font-size: 12px; }
+.thread-list.vertical { display: grid; }
+.thread-list.vertical span { border-radius: 12px; line-height: 1.35; }
 .react-flow__edge { z-index: 2; }
 .react-flow__edge-path { filter: drop-shadow(0 0 8px rgba(129, 140, 248, .42)); }
 .creator-edge .react-flow__edge-path { stroke: #a5b4fc; stroke-width: 4; }
@@ -39,6 +41,7 @@ code { color: #a5b4fc; background: #111827; padding: 2px 7px; border-radius: 8px
 .context-menu button + button { margin-top: 2px; }
 .drawer { position: fixed; right: 18px; top: 86px; bottom: 18px; z-index: 20; width: min(420px, calc(100vw - 36px)); border: 1px solid #25324a; background: rgba(7, 12, 24, .94); backdrop-filter: blur(16px); border-radius: 22px; padding: 18px; overflow: auto; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
 .drawer h2 { margin: 0 0 6px; letter-spacing: -0.04em; }
+.drawer h3 { margin: 20px 0 0; letter-spacing: -0.03em; }
 .close { float: right; border: 1px solid #334155; background: #111827; color: #dbeafe; border-radius: 999px; padding: 6px 10px; cursor: pointer; }
 .message-stack { display: grid; gap: 12px; margin-top: 18px; }
 .message { width: min(82%, 320px); border: 1px solid #25324a; border-radius: 18px; background: rgba(15, 23, 42, .72); padding: 12px; box-shadow: 0 14px 36px rgba(0,0,0,.24); }

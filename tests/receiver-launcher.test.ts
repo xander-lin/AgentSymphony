@@ -13,6 +13,8 @@ describe("launchHubReceiver", () => {
       prompt: "bootstrap",
       timeoutMs: 1000,
       pollIntervalMs: 5,
+      beforeSessions: [],
+      listSessions: async () => [{ id: "ses_receiver", directory: "/repo", title: "bootstrap", time_created: 2, time_updated: 2 }],
       spawnReceiver() {
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
         return { pid: 123, unref() {} }
@@ -21,6 +23,7 @@ describe("launchHubReceiver", () => {
 
     expect(launched.pid).toBe(123)
     expect(launched.prompt).toBe("bootstrap")
+    expect(launched.sessionId).toBe("ses_receiver")
     expect(launched.instance).toMatchObject({ id: "receiver" })
   })
 })

@@ -156,7 +156,7 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
   async getMonitorSnapshot(): Promise<{ instances: HubInstance[]; conversations: HubConversation[]; messages: HubMessage[] }> {
     const snapshot = await this.loadSnapshot()
     return {
-      instances: [...snapshot.instances.values()].filter((instance) => this.isLive(instance)),
+      instances: [...snapshot.instances.values()].map((instance) => ({ ...instance, online: this.isLive(instance) })).sort((left, right) => left.registeredAt.localeCompare(right.registeredAt)),
       conversations: [...snapshot.conversations.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
       messages: [...snapshot.messages.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     }

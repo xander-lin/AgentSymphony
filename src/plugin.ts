@@ -55,7 +55,8 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           const hubState = hubConnector.getStatus()
           const snapshot = await hub.getMonitorSnapshot()
           const currentIdentity = identity
-          const liveInstanceIds = new Set(snapshot.instances.map((instance) => instance.id))
+          const liveInstances = snapshot.instances.filter((instance) => instance.online !== false)
+          const liveInstanceIds = new Set(liveInstances.map((instance) => instance.id))
           const visibleThreads = currentIdentity
             ? snapshot.conversations
                 .filter((conversation) => conversation.parentInstanceId === currentIdentity.id || conversation.targetInstanceId === currentIdentity.id)
@@ -75,7 +76,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
                   }
                 })
             : []
-          return respond("hub.system_status", `AgentSymphony has ${snapshot.instances.length} live instances, ${snapshot.conversations.length} threads, and ${snapshot.messages.length} messages.`, {
+          return respond("hub.system_status", `AgentSymphony has ${liveInstances.length} live instances, ${snapshot.instances.length} known instances, ${snapshot.conversations.length} threads, and ${snapshot.messages.length} messages.`, {
             current: {
               connected: hubState.connected,
               instance: hubState.connected ? hubState.instance : undefined,
@@ -83,13 +84,15 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
               error: hubState.connected ? undefined : hubState.error,
             },
             counts: {
-              liveInstances: snapshot.instances.length,
+              liveInstances: liveInstances.length,
+              knownInstances: snapshot.instances.length,
               threads: snapshot.conversations.length,
               visibleThreads: visibleThreads.length,
               messages: snapshot.messages.length,
               queuedMessages: snapshot.messages.filter((message) => message.status === "queued").length,
             },
-            liveInstances: snapshot.instances,
+            liveInstances,
+            knownInstances: snapshot.instances,
             visibleThreads,
             suggestedTools: {
               sendExistingThread: "agentsymphony_hub_send_thread",

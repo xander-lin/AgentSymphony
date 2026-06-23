@@ -13,7 +13,9 @@ body { background: #070911; color: #edf2ff; font-family: Inter, ui-sans-serif, s
 .react-flow__handle.source-handle { right: -7px; background: #38bdf8; }
 .react-flow__handle.target-handle { left: -7px; background: #a5b4fc; }
 .node-card { box-sizing: border-box; border: 1px solid #2a3852; border-radius: 22px; background: rgba(13, 21, 36, .96); box-shadow: 0 18px 52px rgba(0,0,0,.32); color: #edf2ff; padding: 16px; }
-.instance-card { width: 280px; min-height: 118px; border-color: rgba(52, 211, 153, .55); }
+.instance-card { width: 280px; min-height: 118px; }
+.instance-card.online { border-color: rgba(52, 211, 153, .55); }
+.instance-card.offline { border-color: rgba(148, 163, 184, .32); filter: saturate(.55); opacity: .78; }
 .thread-card { width: 340px; min-height: 168px; border-color: rgba(129, 140, 248, .60); }
 .eyebrow { color: #93a4be; font-size: 11px; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 8px; }
 .node-title { font-weight: 800; letter-spacing: -0.03em; overflow-wrap: anywhere; }

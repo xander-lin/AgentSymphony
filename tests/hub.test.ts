@@ -63,6 +63,21 @@ describe("MemoryAgentSymphonyHub", () => {
     await expect(hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "stale" })).rejects.toThrow(/Stale parent instance/)
   })
 
+  it("keeps stale instances in monitor snapshots as offline history", async () => {
+    let now = new Date("2026-01-01T00:00:00.000Z")
+    const hub = new MemoryAgentSymphonyHub({ instanceTtlMs: 1000, now: () => now })
+    const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })
+    const child = await hub.registerInstance({ name: "child", directory: "/repo" })
+    await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "historical", threadName: "historical" })
+
+    now = new Date("2026-01-01T00:00:02.000Z")
+    await hub.heartbeat(parent.id)
+    const snapshot = await hub.getMonitorSnapshot()
+
+    expect(snapshot.instances).toEqual([expect.objectContaining({ id: parent.id, online: true }), expect.objectContaining({ id: child.id, online: false })])
+    expect(snapshot.conversations).toEqual([expect.objectContaining({ targetInstanceId: child.id })])
+  })
+
   it("rejects messages when the other side becomes stale", async () => {
     let now = new Date("2026-01-01T00:00:00.000Z")
     const hub = new MemoryAgentSymphonyHub({ instanceTtlMs: 1000, now: () => now })

@@ -25,6 +25,7 @@ interface HubInstance {
   name: string
   directory: string
   lastSeenAt: string
+  online?: boolean
 }
 
 interface HubConversation {
@@ -82,11 +83,12 @@ function instanceLabel(instancesById: Map<string, HubInstance>, id: string): str
 
 function AgentNode({ data }: NodeProps<Node<GraphNodeData>>) {
   if (data.kind !== "instance") return null
+  const online = data.instance.online !== false
   return (
-    <div className="node-card instance-card">
+    <div className={`node-card instance-card ${online ? "online" : "offline"}`}>
       <Handle type="target" position={Position.Left} className="node-handle target-handle" />
       <Handle type="source" position={Position.Right} className="node-handle source-handle" />
-      <div className="eyebrow">OpenCode Instance</div>
+      <div className="eyebrow">OpenCode Instance · {online ? "Online" : "Offline"}</div>
       <div className="node-title">{data.instance.name}</div>
       <div className="node-meta"><code>{short(data.instance.id)}</code><span>{formatTime(data.instance.lastSeenAt)}</span></div>
     </div>
@@ -128,7 +130,7 @@ function buildGraph(snapshot: MonitorSnapshot): { nodes: Node<GraphNodeData>[]; 
   const instancesById = new Map(snapshot.instances.map((instance) => [instance.id, instance]))
   const nodes: Node<GraphNodeData>[] = []
   for (const id of instanceIds) {
-    const instance = instancesById.get(id) ?? { id, name: `Missing ${short(id)}`, directory: "", lastSeenAt: "" }
+    const instance = instancesById.get(id) ?? { id, name: `Missing ${short(id)}`, directory: "", lastSeenAt: "", online: false }
     nodes.push({ id: `instance:${id}`, type: "instance", position: { x: 0, y: 0 }, sourcePosition: Position.Right, targetPosition: Position.Left, data: { kind: "instance", instance } })
   }
   const relationships = groupRelationships(snapshot.conversations)
@@ -311,7 +313,7 @@ function Dashboard() {
     <div className="app">
       <header className="hud">
         <div><h1>AgentSymphony Hub</h1><p>Auto-layout infinite canvas for OpenCode collaboration</p></div>
-        <div className="stats"><span>Instances <b>{snapshot.instances.length}</b></span><span>Threads <b>{snapshot.conversations.length}</b></span><span>Messages <b>{snapshot.messages.length}</b></span><span>Queued <b>{queued}</b></span></div>
+        <div className="stats"><span>Online <b>{snapshot.instances.filter((instance) => instance.online !== false).length}</b></span><span>Known <b>{snapshot.instances.length}</b></span><span>Threads <b>{snapshot.conversations.length}</b></span><span>Messages <b>{snapshot.messages.length}</b></span><span>Queued <b>{queued}</b></span></div>
       </header>
       <ReactFlow
         nodes={nodes}

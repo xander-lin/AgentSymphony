@@ -5,6 +5,7 @@ export interface HubInstance {
   tuiBaseUrl?: string
   registeredAt: string
   lastSeenAt: string
+  online?: boolean
 }
 
 export interface HubConversation {

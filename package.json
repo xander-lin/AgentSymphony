@@ -1,0 +1,22 @@
+{
+  "name": "agentsymphony",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenCode-only agent-to-agent collaboration plugin.",
+  "scripts": {
+    "hub": "tsx src/hub/daemon.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

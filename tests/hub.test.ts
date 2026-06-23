@@ -20,6 +20,20 @@ describe("MemoryAgentSymphonyHub", () => {
     expect(inbox[0]?.status).toBe("delivered")
   })
 
+  it("allows only one conversation between the same two instances", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })
+    const child = await hub.registerInstance({ name: "child", directory: "/repo" })
+
+    const first = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "first", threadName: "first" })
+    const duplicate = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "second", threadName: "second" })
+    const reversed = await hub.createConversation({ parentInstanceId: child.id, targetInstanceId: parent.id, title: "reverse", threadName: "reverse" })
+
+    expect(duplicate).toEqual(first)
+    expect(reversed).toEqual(first)
+    await expect(hub.listConversationsForInstance(parent.id)).resolves.toEqual([first])
+  })
+
   it("lets a target plugin inject a routed message into its TUI", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })

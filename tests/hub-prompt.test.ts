@@ -29,9 +29,40 @@ describe("formatInjectedHubPrompt", () => {
     expect(prompt).not.toContain("conv_1")
     expect(prompt).not.toContain("inst_parent")
     expect(prompt).not.toContain("hubmsg_1")
-    expect(prompt).toContain("thread 'reviewer'")
-    expect(prompt).toContain("created by another OpenCode instance")
+    expect(prompt).toContain("<<<AGENTSYMPHONY:reviewer>>>")
+    expect(prompt).toContain("<<<END AGENTSYMPHONY:reviewer>>>")
+    expect(prompt).toContain("Thread: reviewer")
+    expect(prompt).toContain("Origin: created elsewhere")
     expect(prompt).toContain("agentsymphony_hub_reply")
     expect(prompt).toContain("Please review the API.")
+  })
+
+  it("uses a sanitized thread name in prompt boundaries", () => {
+    const prompt = formatInjectedHubPrompt(
+      {
+        id: "hubmsg_1",
+        conversationId: "conv_1",
+        fromInstanceId: "inst_parent",
+        toInstanceId: "inst_child",
+        content: "hello",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        status: "delivered",
+      },
+      {
+        id: "conv_1",
+        threadName: "review thread/alpha",
+        createdByInstanceId: "inst_parent",
+        parentInstanceId: "inst_parent",
+        targetInstanceId: "inst_child",
+        title: "Review task",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      true,
+    )
+
+    expect(prompt).toContain("<<<AGENTSYMPHONY:review_thread_alpha>>>")
+    expect(prompt).toContain("Thread: review thread/alpha")
+    expect(prompt).toContain("Origin: created here")
   })
 })

@@ -1,8 +1,11 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
+import { readdir, readFile } from "node:fs/promises"
+import { join } from "node:path"
 import { startHubConnector } from "./hub/connector.ts"
 import { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
-import { launchHubReceiver } from "./hub/receiver-launcher.ts"
+import { launchHubReceiver, resumeHubReceiver } from "./hub/receiver-launcher.ts"
 import { MemoryReplyContextStore } from "./hub/reply-context.ts"
+import type { HubConversation, HubMessage } from "./hub/types.ts"
 import { FileInstanceIdentityStore, type InstanceIdentity } from "./instance/identity.ts"
 import { FileMessageBus } from "./messages/file.ts"
 import { CliOpenCodeRunner } from "./runtime/cli.ts"
@@ -17,10 +20,13 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   const service = new AgentSymphonyService(bus, runner, terminal)
   const identityStore = new FileInstanceIdentityStore()
   let identity: InstanceIdentity | undefined
+  const bootstrapSessionId = process.env.AGENTSYMPHONY_RESUME_SESSION_ID
+  delete process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   const bindSessionIdentity = async (sessionId: string): Promise<InstanceIdentity> => {
     identity = await identityStore.load(directory, sessionId, identity)
     return identity
   }
+  if (bootstrapSessionId) await bindSessionIdentity(bootstrapSessionId)
   const hub = new HttpAgentSymphonyHubClient()
   const replyContext = new MemoryReplyContextStore()
   const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client), replyContext })
@@ -66,6 +72,28 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           return respond("hub.receiver.launched", `Launched receiver ${result.instance.id}.`, result)
         },
       }),
+      agentsymphony_hub_resume_receiver: tool({
+        description: "Resume an existing OpenCode receiver session and wait for hub registration.",
+        args: {
+          sessionId: tool.schema.string().describe("OpenCode session id to resume."),
+          processId: tool.schema.number().optional().describe("Optional existing OpenCode process id. If it is still running this session, the process is reused."),
+          title: tool.schema.string().optional().describe("Optional display title for the resumed receiver."),
+          prompt: tool.schema.string().optional().describe("Bootstrap prompt to submit when the receiver TUI resumes."),
+          timeoutMs: tool.schema.number().optional().describe("Maximum time to wait for receiver registration."),
+        },
+        async execute(args) {
+          const result = await resumeHubReceiver({
+            hub,
+            directory,
+            sessionId: args.sessionId,
+            processId: args.processId,
+            title: args.title,
+            prompt: args.prompt,
+            timeoutMs: args.timeoutMs,
+          })
+          return respond("hub.receiver.resumed", `Resumed receiver ${result.instance.id}.`, result)
+        },
+      }),
       agentsymphony_hub_create_conversation: tool({
         description: "Create a hub-routed AgentSymphony conversation targeting another OpenCode instance.",
         args: {
@@ -94,12 +122,16 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
-          const message = await hub.sendMessage({
+          const result = await sendHubMessageOrOfflineNotice({
+            hub,
+            directory,
             conversationId: args.conversationId,
             fromInstanceId: currentIdentity.id,
             content: args.message,
           })
-          return respond("hub.message.sent", `Queued hub message ${message.id}.`, message)
+          return result.ok
+            ? respond("hub.message.sent", `Queued hub message ${result.message.id}.`, result.message)
+            : respondFailure("hub.message.target_offline", result.summary, result.data)
         },
       }),
       agentsymphony_hub_reply: tool({
@@ -113,12 +145,16 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           const currentIdentity = identity
           const context = args.thread ? await replyContext.getByThread(args.thread) : await replyContext.getLatest()
           if (!context) throw new Error("No inbound AgentSymphony conversation is available to reply to.")
-          const message = await hub.sendMessage({
+          const result = await sendHubMessageOrOfflineNotice({
+            hub,
+            directory,
             conversationId: context.conversationId,
             fromInstanceId: currentIdentity.id,
             content: args.message,
           })
-          return respond("hub.reply.sent", `Queued reply ${message.id}.`, { message, context })
+          return result.ok
+            ? respond("hub.reply.sent", `Queued reply ${result.message.id}.`, { message: result.message, context })
+            : respondFailure("hub.reply.target_offline", result.summary, { offline: result.data, context })
         },
       }),
       agentsymphony_hub_list_threads: tool({
@@ -264,6 +300,63 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
 
 function respond(type: string, summary: string, data: unknown): string {
   return JSON.stringify({ ok: true, type, summary, data }, null, 2)
+}
+
+function respondFailure(type: string, summary: string, data: unknown): string {
+  return JSON.stringify({ ok: false, type, summary, data }, null, 2)
+}
+
+async function sendHubMessageOrOfflineNotice(input: {
+  hub: HttpAgentSymphonyHubClient
+  directory: string
+  conversationId: string
+  fromInstanceId: string
+  content: string
+}): Promise<{ ok: true; message: HubMessage } | { ok: false; summary: string; data: unknown }> {
+  const conversation = await input.hub.getConversation(input.conversationId)
+  if (!conversation) throw new Error(`Unknown hub conversation: ${input.conversationId}`)
+  const targetInstanceId = input.fromInstanceId === conversation.parentInstanceId ? conversation.targetInstanceId : conversation.parentInstanceId
+  const liveInstances = await input.hub.listInstances()
+  if (!liveInstances.some((instance) => instance.id === targetInstanceId)) {
+    const sessionId = await findSessionIdForInstance(input.directory, targetInstanceId)
+    return {
+      ok: false,
+      summary: `Target instance ${targetInstanceId} is offline. Resume it before sending this message.`,
+      data: {
+        conversation: describeConversation(conversation),
+        targetInstanceId,
+        resume: sessionId ? { tool: "agentsymphony_hub_resume_receiver", sessionId } : { tool: "agentsymphony_hub_resume_receiver", sessionId: undefined },
+        unsentMessage: input.content,
+      },
+    }
+  }
+  return { ok: true, message: await input.hub.sendMessage({ conversationId: input.conversationId, fromInstanceId: input.fromInstanceId, content: input.content }) }
+}
+
+function describeConversation(conversation: HubConversation): Pick<HubConversation, "id" | "threadName" | "title" | "parentInstanceId" | "targetInstanceId"> {
+  return {
+    id: conversation.id,
+    threadName: conversation.threadName,
+    title: conversation.title,
+    parentInstanceId: conversation.parentInstanceId,
+    targetInstanceId: conversation.targetInstanceId,
+  }
+}
+
+async function findSessionIdForInstance(directory: string, instanceId: string): Promise<string | undefined> {
+  const instancesDirectory = join(directory, ".agentsymphony", "instances")
+  try {
+    const entries = await readdir(instancesDirectory)
+    for (const entry of entries) {
+      if (!entry.startsWith("session-") || !entry.endsWith(".json")) continue
+      const parsed = JSON.parse(await readFile(join(instancesDirectory, entry), "utf8")) as Partial<InstanceIdentity>
+      if (parsed.id === instanceId) return entry.slice("session-".length, -".json".length)
+    }
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : undefined
+    if (code !== "ENOENT") throw error
+  }
+  return undefined
 }
 
 export default AgentSymphonyPlugin

@@ -1,14 +1,19 @@
 import type { HubConversation, HubMessage } from "./types.ts"
 
 export function formatInjectedHubPrompt(message: HubMessage, conversation: HubConversation, createdByThisInstance: boolean): string {
+  const thread = sanitizeThreadBoundary(conversation.threadName)
   return [
-    `You received a delegated AgentSymphony message in thread '${conversation.threadName}'.`,
-    createdByThisInstance ? "This thread was created by this OpenCode instance." : "This thread was created by another OpenCode instance.",
-    "",
-    "Reply normally to this request. If you need to respond back through AgentSymphony, call `agentsymphony_hub_reply` with your message. Routing is handled automatically.",
-    "If you are handling multiple AgentSymphony threads, pass the visible thread name to `agentsymphony_hub_reply`.",
+    `<<<AGENTSYMPHONY:${thread}>>>`,
+    `Thread: ${conversation.threadName}`,
+    `Origin: ${createdByThisInstance ? "created here" : "created elsewhere"}`,
+    "Reply: use `agentsymphony_hub_reply`; include `thread` only if handling multiple threads.",
     "",
     "Message:",
     message.content,
+    `<<<END AGENTSYMPHONY:${thread}>>>`,
   ].join("\n")
+}
+
+function sanitizeThreadBoundary(threadName: string): string {
+  return threadName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 96) || "thread"
 }

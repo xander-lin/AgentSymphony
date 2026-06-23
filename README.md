@@ -8,6 +8,7 @@ AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode ag
 - A background AgentSymphony hub stays alive and routes messages between OpenCode instances.
 - Every OpenCode instance loads the AgentSymphony plugin at startup and registers with the hub.
 - Parent agents create conversations by binding a parent instance to a target child instance.
+- A pair of OpenCode instances can have at most one hub conversation at a time; duplicate create requests return the existing conversation.
 - Messages are delivered through the hub to the target instance plugin.
 - The target plugin injects incoming text into its own TUI via OpenCode's TUI API (`appendPrompt` + `submitPrompt`).
 - The child agent experiences the message as input arriving in its own interactive OpenCode instance, not as a hidden `opencode run` call.
@@ -15,9 +16,9 @@ AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode ag
 
 ## Current Implementation Status
 
-- Implemented: hub protocol, in-memory hub, instance registration, conversation routing, inbox polling, message acknowledgement, and TUI injection adapter interfaces.
+- Implemented: hub protocol, persistent hub, instance registration, conversation routing, inbox polling, message acknowledgement, TUI injection, receiver launch/resume tools, and monitoring dashboard.
 - Implemented: legacy local conversation/session tools using `opencode run --session`.
-- Next: replace legacy send path with hub routing and add a long-running hub process plus plugin poller.
+- Next: harden recovered-session runtime behavior across OpenCode versions and terminal launchers.
 
 ## Tools
 
@@ -27,6 +28,12 @@ AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode ag
 - `agentsymphony_read_messages`: reads recorded messages for a conversation.
 - `agentsymphony_open_conversation`: opens a child conversation in a new terminal running the OpenCode TUI.
 - `agentsymphony_list_conversations`: lists known child conversations.
+- `agentsymphony_hub_launch_receiver`: launches a new OpenCode receiver TUI, waits for hub registration, and returns the receiver session id when discoverable.
+- `agentsymphony_hub_resume_receiver`: resumes an existing OpenCode receiver session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement.
+- `agentsymphony_hub_create_conversation`: creates a hub-routed thread targeting another registered OpenCode instance.
+- `agentsymphony_hub_send_message`: sends a message through a hub-routed conversation.
+- `agentsymphony_hub_reply`: replies to the latest inbound hub-routed thread, or a named thread.
+- `agentsymphony_hub_list_threads` and `agentsymphony_hub_read_thread`: inspect visible hub threads and recent message history on demand.
 
 Tool results use a consistent JSON envelope with `ok`, `type`, `summary`, and `data` fields so parent agents can quickly decide what happened before inspecting details.
 

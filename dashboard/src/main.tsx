@@ -55,7 +55,15 @@ interface MonitorSnapshot {
 
 type GraphNodeData =
   | { kind: "instance"; instance: HubInstance }
-  | { kind: "thread"; conversation: HubConversation; messages: HubMessage[] }
+  | { kind: "relationship"; relationship: ConversationRelationship; messages: HubMessage[] }
+
+interface ConversationRelationship {
+  id: string
+  createdByInstanceId: string
+  targetInstanceId: string
+  conversations: HubConversation[]
+  updatedAt: string
+}
 
 const elk = new (ELK as any)()
 
@@ -85,24 +93,25 @@ function AgentNode({ data }: NodeProps<Node<GraphNodeData>>) {
   )
 }
 
-function ThreadNode({ data }: NodeProps<Node<GraphNodeData>>) {
-  if (data.kind !== "thread") return null
+function RelationshipNode({ data }: NodeProps<Node<GraphNodeData>>) {
+  if (data.kind !== "relationship") return null
   const queued = data.messages.filter((message) => message.status === "queued").length
   const acknowledged = data.messages.filter((message) => message.status === "acknowledged").length
+  const latest = data.relationship.conversations[0]
   return (
     <div className="node-card thread-card">
       <Handle type="target" position={Position.Left} className="node-handle target-handle" />
       <Handle type="source" position={Position.Right} className="node-handle source-handle" />
-      <div className="eyebrow">Conversation Card</div>
-      <div className="thread-name">{data.conversation.threadName}</div>
-      <div className="thread-title">{data.conversation.title}</div>
-      <div className="node-meta"><code>{short(data.conversation.id)}</code><span>{formatTime(data.conversation.updatedAt)}</span></div>
+      <div className="eyebrow">Conversation Link</div>
+      <div className="thread-name">{data.relationship.conversations.length} threads</div>
+      <div className="thread-title">Latest: {latest?.threadName ?? "none"}</div>
+      <div className="node-meta"><code>{short(data.relationship.id)}</code><span>{formatTime(data.relationship.updatedAt)}</span></div>
       <div className="badges"><span>{data.messages.length} messages</span><span className="queued">{queued} queued</span><span className="acknowledged">{acknowledged} ack</span></div>
     </div>
   )
 }
 
-const nodeTypes = { instance: AgentNode, thread: ThreadNode }
+const nodeTypes = { instance: AgentNode, relationship: RelationshipNode }
 
 async function fetchSnapshot(): Promise<MonitorSnapshot> {
   const response = await fetch("/monitor/snapshot")
@@ -122,21 +131,22 @@ function buildGraph(snapshot: MonitorSnapshot): { nodes: Node<GraphNodeData>[]; 
     const instance = instancesById.get(id) ?? { id, name: `Missing ${short(id)}`, directory: "", lastSeenAt: "" }
     nodes.push({ id: `instance:${id}`, type: "instance", position: { x: 0, y: 0 }, sourcePosition: Position.Right, targetPosition: Position.Left, data: { kind: "instance", instance } })
   }
-  for (const conversation of snapshot.conversations) {
+  const relationships = groupRelationships(snapshot.conversations)
+  for (const relationship of relationships) {
     nodes.push({
-      id: `thread:${conversation.id}`,
-      type: "thread",
+      id: `relationship:${relationship.id}`,
+      type: "relationship",
       position: { x: 0, y: 0 },
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
-      data: { kind: "thread", conversation, messages: snapshot.messages.filter((message) => message.conversationId === conversation.id) },
+      data: { kind: "relationship", relationship, messages: snapshot.messages.filter((message) => relationship.conversations.some((conversation) => conversation.id === message.conversationId)) },
     })
   }
-  const edges: Edge[] = snapshot.conversations.flatMap((conversation) => [
+  const edges: Edge[] = relationships.flatMap((relationship) => [
     {
-      id: `creator:${conversation.id}`,
-      source: `instance:${conversation.createdByInstanceId}`,
-      target: `thread:${conversation.id}`,
+      id: `creator:${relationship.id}`,
+      source: `instance:${relationship.createdByInstanceId}`,
+      target: `relationship:${relationship.id}`,
       type: "smoothstep",
       animated: true,
       className: "creator-edge",
@@ -145,11 +155,11 @@ function buildGraph(snapshot: MonitorSnapshot): { nodes: Node<GraphNodeData>[]; 
       style: { stroke: "#a5b4fc", strokeWidth: 4 },
     },
     {
-      id: `target:${conversation.id}`,
-      source: `thread:${conversation.id}`,
-      target: `instance:${conversation.targetInstanceId}`,
+      id: `target:${relationship.id}`,
+      source: `relationship:${relationship.id}`,
+      target: `instance:${relationship.targetInstanceId}`,
       type: "smoothstep",
-      animated: conversation.updatedAt === snapshot.conversations[0]?.updatedAt,
+      animated: relationship.updatedAt === relationships[0]?.updatedAt,
       className: "target-edge",
       interactionWidth: 22,
       markerEnd: { type: MarkerType.ArrowClosed, color: "#38bdf8", width: 18, height: 18 },
@@ -157,6 +167,26 @@ function buildGraph(snapshot: MonitorSnapshot): { nodes: Node<GraphNodeData>[]; 
     },
   ])
   return { nodes, edges }
+}
+
+function groupRelationships(conversations: HubConversation[]): ConversationRelationship[] {
+  const groups = new Map<string, HubConversation[]>()
+  for (const conversation of conversations) {
+    const key = `${conversation.createdByInstanceId}:${conversation.targetInstanceId}`
+    groups.set(key, [...groups.get(key) ?? [], conversation])
+  }
+  return [...groups.entries()]
+    .map(([id, groupedConversations]) => {
+      const sorted = [...groupedConversations].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      return {
+        id,
+        createdByInstanceId: sorted[0].createdByInstanceId,
+        targetInstanceId: sorted[0].targetInstanceId,
+        conversations: sorted,
+        updatedAt: sorted[0].updatedAt,
+      }
+    })
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 
 async function layoutGraph(nodes: Node<GraphNodeData>[], edges: Edge[]): Promise<Node<GraphNodeData>[]> {
@@ -168,7 +198,7 @@ async function layoutGraph(nodes: Node<GraphNodeData>[], edges: Edge[]): Promise
       "elk.spacing.nodeNode": "90",
       "elk.layered.spacing.nodeNodeBetweenLayers": "160",
     },
-    children: nodes.map((node) => ({ id: node.id, width: node.type === "thread" ? 340 : 280, height: node.type === "thread" ? 168 : 118 })),
+    children: nodes.map((node) => ({ id: node.id, width: node.type === "relationship" ? 340 : 280, height: node.type === "relationship" ? 168 : 118 })),
     edges: edges.map((edge) => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
   }
   const layout = await elk.layout(graph)
@@ -189,31 +219,34 @@ function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread }: {
     <div className="context-menu" role="menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={onClose}>
       <button type="button" onClick={() => onInspect(menu.node)}>Inspect</button>
       <button type="button" onClick={() => { void navigator.clipboard?.writeText(menu.node.id); onClose() }}>Copy Node ID</button>
-      {data.kind === "thread" && <button type="button" onClick={() => onCopyThread(menu.node)}>Copy Thread Name</button>}
-      {data.kind === "thread" && <button type="button" onClick={() => onFocusNode(`instance:${data.conversation.createdByInstanceId}`)}>Focus Creator</button>}
-      {data.kind === "thread" && <button type="button" onClick={() => onFocusNode(`instance:${data.conversation.targetInstanceId}`)}>Focus Target</button>}
-      {data.kind === "thread" && <button type="button" onClick={() => onInspect(menu.node)}>View Messages</button>}
+      {data.kind === "relationship" && <button type="button" onClick={() => onCopyThread(menu.node)}>Copy Latest Thread</button>}
+      {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.createdByInstanceId}`)}>Focus Creator</button>}
+      {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.targetInstanceId}`)}>Focus Target</button>}
+      {data.kind === "relationship" && <button type="button" onClick={() => onInspect(menu.node)}>View Messages</button>}
     </div>
   )
 }
 
 function DetailsDrawer({ node, instancesById, onClose }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; onClose: () => void }) {
   if (!node) return null
-  if (node.data.kind === "thread") {
-    const { conversation, messages } = node.data
+  if (node.data.kind === "relationship") {
+    const { relationship, messages } = node.data
     return (
       <aside className="drawer">
         <button type="button" className="close" onClick={onClose}>Close</button>
-        <h2>{conversation.threadName}</h2>
-        <p className="muted">{conversation.title}</p>
+        <h2>{relationship.conversations.length} threads</h2>
+        <p className="muted">{relationship.conversations.map((conversation) => conversation.threadName).join(", ")}</p>
         <dl className="facts">
-          <div><dt>Creator</dt><dd>{instanceLabel(instancesById, conversation.createdByInstanceId)} <code>{short(conversation.createdByInstanceId)}</code></dd></div>
-          <div><dt>Target</dt><dd>{instanceLabel(instancesById, conversation.targetInstanceId)} <code>{short(conversation.targetInstanceId)}</code></dd></div>
-          <div><dt>Updated</dt><dd>{formatTime(conversation.updatedAt)}</dd></div>
+          <div><dt>Creator</dt><dd>{instanceLabel(instancesById, relationship.createdByInstanceId)} <code>{short(relationship.createdByInstanceId)}</code></dd></div>
+          <div><dt>Target</dt><dd>{instanceLabel(instancesById, relationship.targetInstanceId)} <code>{short(relationship.targetInstanceId)}</code></dd></div>
+          <div><dt>Updated</dt><dd>{formatTime(relationship.updatedAt)}</dd></div>
         </dl>
+        <div className="thread-list">
+          {relationship.conversations.map((conversation) => <span key={conversation.id}>{conversation.threadName}</span>)}
+        </div>
         <div className="message-stack">
-          {messages.length ? messages.map((message) => {
-            const side = message.fromInstanceId === conversation.createdByInstanceId ? "right" : "left"
+          {messages.length ? [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt)).map((message) => {
+            const side = message.fromInstanceId === relationship.createdByInstanceId ? "right" : "left"
             return (
               <article className={`message ${side}`} key={message.id}>
                 <div className="message-speaker">{instanceLabel(instancesById, message.fromInstanceId)} <time>{formatTime(message.createdAt)}</time></div>
@@ -265,12 +298,12 @@ function Dashboard() {
   const focusNode = useCallback((nodeId: string) => {
     const node = flow.getNode(nodeId)
     if (!node) return
-    flow.setCenter(node.position.x + (node.type === "thread" ? 170 : 140), node.position.y + (node.type === "thread" ? 84 : 59), { zoom: 1.2, duration: 500 })
+    flow.setCenter(node.position.x + (node.type === "relationship" ? 170 : 140), node.position.y + (node.type === "relationship" ? 84 : 59), { zoom: 1.2, duration: 500 })
     setMenu(null)
   }, [flow])
 
   const copyThread = useCallback((node: Node<GraphNodeData>) => {
-    if (node.data.kind === "thread") void navigator.clipboard?.writeText(node.data.conversation.threadName)
+    if (node.data.kind === "relationship") void navigator.clipboard?.writeText(node.data.relationship.conversations[0]?.threadName ?? "")
     setMenu(null)
   }, [])
 

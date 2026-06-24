@@ -7,7 +7,8 @@ import { FileReplyContextStore } from "./hub/reply-context.ts"
 import type { ReplyContext } from "./hub/reply-context.ts"
 import { FileInstanceIdentityStore, type InstanceIdentity } from "./instance/identity.ts"
 import { OpenCodeTuiController } from "./tui/opencode.ts"
-import { TEAM_SYSTEM_GUIDANCE } from "./plugin-guidance.ts"
+import { buildTeamSystemGuidance } from "./plugin-guidance.ts"
+import { loadModelCatalog } from "./model-catalog.ts"
 import { defaultThreadName, deleteVisibleTeammate, describeConversation, findSessionIdForInstance, findVisibleConversationByThread, findVisibleTeammateByInstanceId, respondHub, sendHubMessageOrOfflineNotice, sendInitialHubMessage } from "./plugin-utils.ts"
 
 export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
@@ -26,6 +27,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   const hub = new HttpAgentSymphonyHubClient()
   const replyContext = new FileReplyContextStore(join(directory, ".agentsymphony", "reply-context.json"))
   const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client, () => currentSessionId, directory), replyContext })
+  let teamSystemGuidance: string | undefined
   const enqueueLaunch = <T>(operation: () => Promise<T>): Promise<T> => {
     const next = launchQueue.then(operation, operation)
     launchQueue = next.then(() => undefined, () => undefined)
@@ -159,7 +161,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         args: {
           title: tool.schema.string().optional().describe("Window title only; not a teammate/task description."),
           prompt: tool.schema.string().optional().describe("Optional first task message for the teammate. It is delivered through the hub after registration, not as raw startup input."),
-          model: tool.schema.string().optional().describe("Initial provider/model id, for example opencode-go/deepseek-v4-pro. Only launch may set model."),
+          model: tool.schema.string().optional().describe("Initial provider/model id selected from the current opencode config or AgentSymphony model catalog. Only launch may set model."),
           threadName: tool.schema.string().optional().describe("Stable short name for later send_thread calls. If omitted, AgentSymphony generates one."),
           timeoutMs: tool.schema.number().optional().describe("Maximum milliseconds to wait for receiver registration."),
         },
@@ -339,7 +341,8 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
       await bindSessionIdentity(input.sessionID)
     },
     async "experimental.chat.system.transform"(_input, output) {
-      if (!output.system.includes(TEAM_SYSTEM_GUIDANCE)) output.system.push(TEAM_SYSTEM_GUIDANCE)
+      teamSystemGuidance ??= buildTeamSystemGuidance(await loadModelCatalog(directory))
+      if (!output.system.includes(teamSystemGuidance)) output.system.push(teamSystemGuidance)
     },
     async "command.execute.before"(input) {
       await bindSessionIdentity(input.sessionID)

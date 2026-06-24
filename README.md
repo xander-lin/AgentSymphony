@@ -50,6 +50,27 @@ AGENTSYMPHONY_TERMINAL="ghostty --title {title} -e {command}"
 
 Conversation metadata and message history are stored under `.agentsymphony/` in the active project directory. This directory is intentionally ignored by git.
 
+## Model Catalog
+
+AgentSymphony does not hard-code model quality assumptions. Model names and capabilities change faster than model training data, so configure the current choices in `agentsymphony.models.json` at the project root or `~/.config/opencode/agentsymphony/models.json`:
+
+```json
+{
+  "models": [
+    {
+      "id": "provider/model-id",
+      "label": "Fast current model",
+      "strengths": ["low latency", "cheap"],
+      "bestFor": ["smoke tests", "formatting", "narrow lookup"],
+      "avoidFor": ["architecture review", "ambiguous debugging"],
+      "notes": "Keep this description current as providers change."
+    }
+  ]
+}
+```
+
+Set `AGENTSYMPHONY_MODEL_CATALOG=/path/to/models.json` to override both default locations. The catalog is injected into the team system guidance so agents choose a model from current configuration instead of relying on stale built-in knowledge.
+
 ## Development
 
 ```sh

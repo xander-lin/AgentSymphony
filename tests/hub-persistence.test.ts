@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -42,6 +42,20 @@ describe("persistent hub store", () => {
         expect.objectContaining({ content: "one" }),
         expect.objectContaining({ content: "two" }),
       ])
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it("writes snapshots through a temporary file before replacing the store", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "agentsymphony-hub-store-"))
+    const storePath = join(directory, "hub-store.json")
+    try {
+      const store = new FileHubStore(storePath)
+      await store.save({ instances: [], conversations: [], messages: [] })
+
+      await expect(readFile(storePath, "utf8")).resolves.toContain("instances")
+      await expect(readFile(`${storePath}.tmp`, "utf8")).rejects.toMatchObject({ code: "ENOENT" })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

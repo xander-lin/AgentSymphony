@@ -77,6 +77,39 @@ describe("receiver launcher", () => {
     expect(prompt).not.toContain("agentsymphony_hub_read_thread")
   })
 
+  it("serializes concurrent launch requests so each receiver is attributed once", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+
+    const first = await launchHubReceiver({
+      hub,
+      directory: "/repo",
+      timeoutMs: 1000,
+      pollIntervalMs: 5,
+      beforeSessions: [],
+      listSessions: async () => [],
+      spawnReceiver() {
+        setTimeout(() => void hub.registerInstance({ id: "receiver-one", name: "receiver-one", directory: "/repo" }), 10)
+        return { pid: 123, unref() {} }
+      },
+    })
+
+    const second = await launchHubReceiver({
+      hub,
+      directory: "/repo",
+      timeoutMs: 1000,
+      pollIntervalMs: 5,
+      beforeSessions: [],
+      listSessions: async () => [],
+      spawnReceiver() {
+        setTimeout(() => void hub.registerInstance({ id: "receiver-two", name: "receiver-two", directory: "/repo" }), 10)
+        return { pid: 456, unref() {} }
+      },
+    })
+
+    expect(first.instance.id).toBe("receiver-one")
+    expect(second.instance.id).toBe("receiver-two")
+  })
+
   it("resumes an existing receiver session by stable session identity", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const identityFileWrites: Array<{ directory: string; sessionId: string }> = []

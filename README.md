@@ -24,12 +24,6 @@ Use the product as a team workflow, not as a low-level routing system: launch te
 
 ## Tools
 
-- `agentsymphony_create_conversation`: creates a tracked child OpenCode conversation, optionally with an initial message.
-- `agentsymphony_send_message`: sends a message to a child conversation and records the assistant response.
-- `agentsymphony_get_conversation`: reads one conversation with messages, counts, and latest state.
-- `agentsymphony_read_messages`: reads recorded messages for a conversation.
-- `agentsymphony_open_conversation`: opens a child conversation in a new terminal running the OpenCode TUI.
-- `agentsymphony_list_conversations`: lists known child conversations.
 - `agentsymphony_hub_launch_receiver`: starts a new teammate and automatically creates its thread. Launch may set `model`; pass `threadName` if you want a stable name, or omit it to let AgentSymphony generate one. If `prompt` is supplied, it is delivered as the first hub message with AgentSymphony wrappers after registration, not as raw startup input.
 - `agentsymphony_hub_resume_receiver`: resumes an offline teammate session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement. Resume may set only `variant`; it does not change the session model. If `prompt` is supplied, it is delivered through the hub after resume.
 - `agentsymphony_hub_system_status`: shows this instance, live peers, visible threads, queued counts, and suggested next tools.
@@ -40,11 +34,9 @@ Use the product as a team workflow, not as a low-level routing system: launch te
 
 Tool results use a consistent JSON envelope with `ok`, `type`, `summary`, and `data` fields so parent agents can quickly decide what happened before inspecting details.
 
-## Terminal Windows
+## Teammate Windows
 
-Set `openTui: true` when creating a conversation or sending a message to open a new terminal after the child session exists. You can also call `agentsymphony_open_conversation` later.
-
-AgentSymphony keeps one TUI window per conversation. Reopening the same conversation reuses the existing live window record instead of creating another terminal. If the recorded terminal process is gone, the next open creates a replacement window. Window records are persisted under `.agentsymphony/windows.json`, so this reuse survives an OpenCode/plugin restart.
+`agentsymphony_hub_launch_receiver` opens a teammate OpenCode session in a terminal and automatically creates its hub thread. Follow-up work should use `agentsymphony_hub_send_thread`; replies arrive through injected hub messages.
 
 By default AgentSymphony tries common Linux terminal launchers such as `xdg-terminal-exec`, `ghostty`, `kitty`, `wezterm`, `alacritty`, `gnome-terminal`, `konsole`, and `xfce4-terminal`.
 

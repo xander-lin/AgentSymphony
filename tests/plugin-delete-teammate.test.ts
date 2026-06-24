@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { deleteVisibleTeammate, sendInitialHubMessage } from "../src/plugin.ts"
+import { deleteVisibleTeammate, sendInitialHubMessage } from "../src/plugin-utils.ts"
 import { MemoryAgentSymphonyHub } from "../src/hub/memory.ts"
 
 const conversation = {
@@ -54,7 +54,7 @@ describe("sendInitialHubMessage", () => {
     const child = await hub.registerInstance({ id: "child", name: "child", directory: "/repo" })
     const created = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "worker", threadName: "worker" })
 
-    const message = await sendInitialHubMessage({ hub, directory: "/repo", fromInstanceId: parent.id, conversation: created, content: "Do the first task." })
+    const message = await sendInitialHubMessage({ hub, fromInstanceId: parent.id, conversation: created, content: "Do the first task." })
 
     expect(message).toMatchObject({ content: "Do the first task.", fromInstanceId: parent.id, toInstanceId: child.id })
     await expect(hub.pollMessages(child.id)).resolves.toEqual([expect.objectContaining({ content: "Do the first task." })])
@@ -66,7 +66,7 @@ describe("sendInitialHubMessage", () => {
     const child = await hub.registerInstance({ id: "child", name: "child", directory: "/repo" })
     const created = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "worker", threadName: "worker" })
 
-    await expect(sendInitialHubMessage({ hub, directory: "/repo", fromInstanceId: parent.id, conversation: created, content: "   " })).resolves.toBeUndefined()
+    await expect(sendInitialHubMessage({ hub, fromInstanceId: parent.id, conversation: created, content: "   " })).resolves.toBeUndefined()
     await expect(hub.pollMessages(child.id)).resolves.toEqual([])
   })
 })

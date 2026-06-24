@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import type { HubStore, HubStoreSnapshot } from "./store.ts"
 import { emptyHubStoreSnapshot } from "./store.ts"
@@ -18,7 +18,9 @@ export class FileHubStore implements HubStore {
 
   async save(snapshot: HubStoreSnapshot): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true })
-    await writeFile(this.filePath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8")
+    const temporaryPath = `${this.filePath}.tmp`
+    await writeFile(temporaryPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8")
+    await rename(temporaryPath, this.filePath)
   }
 }
 

@@ -1,38 +1,20 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
-import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { startHubConnector } from "./hub/connector.ts"
 import { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
 import { launchHubReceiver, resumeHubReceiver } from "./hub/receiver-launcher.ts"
-import { MemoryReplyContextStore } from "./hub/reply-context.ts"
-import type { HubConversation, HubMessage } from "./hub/types.ts"
+import { FileReplyContextStore } from "./hub/reply-context.ts"
+import type { ReplyContext } from "./hub/reply-context.ts"
 import { FileInstanceIdentityStore, type InstanceIdentity } from "./instance/identity.ts"
-import { FileMessageBus } from "./messages/file.ts"
-import { CliOpenCodeRunner } from "./runtime/cli.ts"
-import { AgentSymphonyService } from "./symphony/service.ts"
-import { LocalTerminalLauncher } from "./terminal/local.ts"
 import { OpenCodeTuiController } from "./tui/opencode.ts"
-
-const TEAM_SYSTEM_GUIDANCE = `Team workflow guidance:
-- Treat AgentSymphony as your teammate system. In any active thread, the sender assigning work is the team lead for that task and the receiver is the team member responsible for the delegated scope.
-- Whether the task came from the real user or from a team lead, decide whether it can be profitably split into independent subtasks. If delegation reduces risk, latency, or cognitive load, continue using the team tools to launch more teammates and assign those subtasks downward.
-- Use a teammate for independent research, focused implementation, review, verification, or competing approaches. Keep work local if the task is tiny, tightly sequential, or requires one continuous edit.
-- Start a teammate with agentsymphony_hub_launch_receiver. You do not need a conversation description; use threadName only when a stable short name helps later coordination. If launch prompt is supplied, it is delivered as the first hub message, not as raw startup input.
-- Send follow-up work with agentsymphony_hub_send_thread. Reply to inbound teammate messages with agentsymphony_hub_reply. Do not poll list/read tools for delivery; teammate messages are injected automatically.
-- Communicate early and explicitly between team lead and team member. If requirements, scope, assumptions, expected output, ownership, or verification criteria are unclear, ask or report back before investing heavily so the team lead and member do not drift out of sync.
-- Use agentsymphony_hub_system_status when deciding whether to resume or delete offline teammates. Resume useful teammates with agentsymphony_hub_resume_receiver; delete stale offline teammates with agentsymphony_hub_delete_teammate.
-- Model selection: use cheaper/faster models for straightforward lookup, summarization, formatting, and narrow checks; use stronger models for architecture, ambiguous debugging, multi-file edits, or high-stakes review. Launch may set model for a new teammate. Later sends/replies may set variant for that prompt only and do not change the teammate model.
-- Keep delegation prompts scoped and outcome-oriented: give the teammate the goal, constraints, files or areas to inspect, expected output, and whether to edit or only report.
-- Summarize teammate results before acting on them; do not blindly merge conflicting conclusions.`
+import { TEAM_SYSTEM_GUIDANCE } from "./plugin-guidance.ts"
+import { defaultThreadName, deleteVisibleTeammate, describeConversation, findSessionIdForInstance, findVisibleConversationByThread, findVisibleTeammateByInstanceId, respondHub, sendHubMessageOrOfflineNotice, sendInitialHubMessage } from "./plugin-utils.ts"
 
 export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
-  const bus = new FileMessageBus(directory)
-  const runner = new CliOpenCodeRunner()
-  const terminal = new LocalTerminalLauncher(directory)
-  const service = new AgentSymphonyService(bus, runner, terminal)
   const identityStore = new FileInstanceIdentityStore()
   let identity: InstanceIdentity | undefined
   let currentSessionId: string | undefined
+  let launchQueue = Promise.resolve()
   const bootstrapSessionId = process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   delete process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   const bindSessionIdentity = async (sessionId: string): Promise<InstanceIdentity> => {
@@ -42,8 +24,13 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   }
   if (bootstrapSessionId) await bindSessionIdentity(bootstrapSessionId)
   const hub = new HttpAgentSymphonyHubClient()
-  const replyContext = new MemoryReplyContextStore()
+  const replyContext = new FileReplyContextStore(join(directory, ".agentsymphony", "reply-context.json"))
   const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client, () => currentSessionId, directory), replyContext })
+  const enqueueLaunch = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = launchQueue.then(operation, operation)
+    launchQueue = next.then(() => undefined, () => undefined)
+    return next
+  }
 
   return {
     tool: {
@@ -179,26 +166,28 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
-          const result = await launchHubReceiver({
-            hub,
-            directory,
-            title: args.title,
-            model: args.model,
-            timeoutMs: args.timeoutMs,
+          return enqueueLaunch(async () => {
+            const result = await launchHubReceiver({
+              hub,
+              directory,
+              title: args.title,
+              model: args.model,
+              timeoutMs: args.timeoutMs,
+            })
+            const threadName = args.threadName ?? defaultThreadName(result.sessionId ?? result.instance.id)
+            const conversation = await hub.createConversation({
+              parentInstanceId: currentIdentity.id,
+              targetInstanceId: result.instance.id,
+              title: threadName,
+              threadName,
+            })
+            const initialDelivery = await sendInitialHubMessage({ hub, fromInstanceId: currentIdentity.id, conversation, content: args.prompt })
+            return respondHub({ hub, directory, identity: currentIdentity, type: "hub.receiver.launched", summary: `Launched receiver ${result.instance.id} and connected thread ${conversation.threadName}${initialDelivery ? ", then queued the initial message" : ""}.`, data: {
+              ...result,
+              thread: describeConversation(conversation),
+              initialMessage: initialDelivery,
+            } })
           })
-          const threadName = args.threadName ?? defaultThreadName(result.sessionId ?? result.instance.id)
-          const conversation = await hub.createConversation({
-            parentInstanceId: currentIdentity.id,
-            targetInstanceId: result.instance.id,
-            title: threadName,
-            threadName,
-          })
-          const initialDelivery = await sendInitialHubMessage({ hub, directory, fromInstanceId: currentIdentity.id, conversation, content: args.prompt })
-          return respondHub({ hub, directory, identity: currentIdentity, type: "hub.receiver.launched", summary: `Launched receiver ${result.instance.id} and connected thread ${conversation.threadName}${initialDelivery ? ", then queued the initial message" : ""}.`, data: {
-            ...result,
-            thread: describeConversation(conversation),
-            initialMessage: initialDelivery,
-          } })
         },
       }),
       agentsymphony_hub_resume_receiver: tool({
@@ -222,7 +211,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             timeoutMs: args.timeoutMs,
           })
           const conversation = identity ? await findVisibleTeammateByInstanceId(hub, identity.id, result.instance.id) : undefined
-          const initialDelivery = conversation && identity ? await sendInitialHubMessage({ hub, directory, fromInstanceId: identity.id, conversation, content: args.prompt, variant: args.variant }) : undefined
+          const initialDelivery = conversation && identity ? await sendInitialHubMessage({ hub, fromInstanceId: identity.id, conversation, content: args.prompt, variant: args.variant }) : undefined
           return respondHub({ hub, directory, identity, type: "hub.receiver.resumed", summary: `Resumed receiver ${result.instance.id}${initialDelivery ? ", then queued the initial message" : ""}.`, data: { ...result, initialMessage: initialDelivery } })
         },
       }),
@@ -283,7 +272,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
           const conversations = await hub.listConversationsForInstance(currentIdentity.id)
-          const contexts = await replyContext.list()
+          const contexts: ReplyContext[] = await replyContext.list()
           const threads = conversations.map((conversation) => ({
             threadName: conversation.threadName,
             title: conversation.title,
@@ -342,73 +331,6 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           return respondHub({ hub, directory, identity, type: "hub.teammate.deleted", summary: result.instance ? `Deleted offline teammate ${args.targetInstanceId} and related threads.` : `Teammate ${args.targetInstanceId} was not found.`, data: result })
         },
       }),
-      agentsymphony_create_conversation: tool({
-        description: "Create a child OpenCode conversation for delegating work to another agent.",
-        args: {
-          title: tool.schema.string().describe("Human-readable title for the child conversation."),
-          initialMessage: tool.schema.string().optional().describe("Optional first user message to send immediately."),
-          agent: tool.schema.string().optional().describe("Optional OpenCode agent name to use for the child session."),
-          model: tool.schema.string().optional().describe("Optional provider/model id for the child session."),
-          directory: tool.schema.string().optional().describe("Optional working directory for the child session."),
-          openTui: tool.schema.boolean().optional().describe("Open a new terminal running `opencode --session` after the first message."),
-        },
-        async execute(args) {
-          const conversation = await service.createConversation(args)
-          return respond("conversation.created", `Created AgentSymphony conversation ${conversation.id}.`, conversation)
-        },
-      }),
-      agentsymphony_send_message: tool({
-        description: "Send a user-style message to a tracked AgentSymphony child conversation.",
-        args: {
-          conversationId: tool.schema.string().describe("AgentSymphony conversation id."),
-          message: tool.schema.string().describe("Message to deliver as the child session's user prompt."),
-          openTui: tool.schema.boolean().optional().describe("Open a new terminal running `opencode --session` after the response."),
-        },
-        async execute(args) {
-          const result = await service.sendMessage(args)
-          return respond("message.sent", `Sent message to ${result.conversation.id}.`, result)
-        },
-      }),
-      agentsymphony_get_conversation: tool({
-        description: "Get one AgentSymphony conversation with its recorded messages and latest state.",
-        args: {
-          conversationId: tool.schema.string().describe("AgentSymphony conversation id."),
-        },
-        async execute(args) {
-          const detail = await service.getConversation(args.conversationId)
-          return respond("conversation.detail", `Loaded ${detail.messageCount} messages for ${args.conversationId}.`, detail)
-        },
-      }),
-      agentsymphony_read_messages: tool({
-        description: "Read recorded parent and child messages from an AgentSymphony conversation.",
-        args: {
-          conversationId: tool.schema.string().describe("AgentSymphony conversation id."),
-          since: tool.schema.string().optional().describe("Optional ISO timestamp; only newer messages are returned."),
-        },
-        async execute(args) {
-          const messages = await service.readMessages(args.conversationId, args.since)
-          return respond("messages.read", `Read ${messages.length} messages from ${args.conversationId}.`, { messages })
-        },
-      }),
-      agentsymphony_open_conversation: tool({
-        description: "Open a tracked child conversation in a new terminal running the OpenCode TUI.",
-        args: {
-          conversationId: tool.schema.string().describe("AgentSymphony conversation id."),
-        },
-        async execute(args) {
-          const result = await service.openConversation(args.conversationId)
-          const action = result.window.reused ? "Reused" : "Opened"
-          return respond("conversation.opened", `${action} TUI for ${result.conversation.id}.`, result)
-        },
-      }),
-      agentsymphony_list_conversations: tool({
-        description: "List child OpenCode conversations tracked by AgentSymphony.",
-        args: {},
-        async execute() {
-          const conversations = await service.listConversations()
-          return respond("conversations.list", `Listed ${conversations.length} AgentSymphony conversations.`, { conversations })
-        },
-      }),
     },
     async "chat.message"(input) {
       await bindSessionIdentity(input.sessionID)
@@ -429,158 +351,6 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
       await bindSessionIdentity(input.sessionID)
     },
   }
-}
-
-function respond(type: string, summary: string, data: unknown): string {
-  return JSON.stringify({ ok: true, type, summary, data }, null, 2)
-}
-
-function respondFailure(type: string, summary: string, data: unknown): string {
-  return JSON.stringify({ ok: false, type, summary, data }, null, 2)
-}
-
-async function respondHub(input: {
-  ok?: boolean
-  hub: HttpAgentSymphonyHubClient
-  directory: string
-  identity: InstanceIdentity | undefined
-  type: string
-  summary: string
-  data: unknown
-}): Promise<string> {
-  const warnings = await offlineReceiverWarnings(input.hub, input.directory, input.identity)
-  return JSON.stringify({
-    ok: input.ok ?? true,
-    type: input.type,
-    summary: input.summary,
-    data: input.data,
-    ...(warnings.length > 0 ? { warnings } : {}),
-  }, null, 2)
-}
-
-export async function offlineReceiverWarnings(hub: Pick<HttpAgentSymphonyHubClient, "getMonitorSnapshot">, directory: string, identity: InstanceIdentity | undefined): Promise<unknown[]> {
-  if (!identity) return []
-  const snapshot = await hub.getMonitorSnapshot()
-  const liveInstanceIds = new Set(snapshot.instances.filter((instance) => instance.online !== false).map((instance) => instance.id))
-  const instancesById = new Map(snapshot.instances.map((instance) => [instance.id, instance]))
-  const offlineThreads = snapshot.conversations
-    .filter((conversation) => conversation.parentInstanceId === identity.id || conversation.targetInstanceId === identity.id)
-    .map((conversation) => {
-      const targetInstanceId = conversation.parentInstanceId === identity.id ? conversation.targetInstanceId : conversation.parentInstanceId
-      return { conversation, targetInstanceId, target: instancesById.get(targetInstanceId) }
-    })
-    .filter((item) => item.target && !liveInstanceIds.has(item.targetInstanceId))
-
-  if (offlineThreads.length === 0) return []
-  return [{
-    type: "hub.offline_receivers",
-    summary: "Some receiver instances connected to this node are offline. Decide whether each receiver is stale and should be deleted, or still needed and should be resumed.",
-    decisionRequired: true,
-    question: "Are these offline receivers outdated and safe to delete, or should they be resumed?",
-    offlineReceivers: await Promise.all(offlineThreads.map(async ({ conversation, targetInstanceId, target }) => ({
-      threadName: conversation.threadName,
-      title: conversation.title,
-      conversationId: conversation.id,
-      targetInstanceId,
-      targetName: target?.name,
-      lastSeenAt: target?.lastSeenAt,
-      choices: {
-        resume: { tool: "agentsymphony_hub_resume_receiver", sessionId: await findSessionIdForInstance(directory, targetInstanceId) },
-        delete: { tool: "agentsymphony_hub_delete_teammate", targetInstanceId, note: "Ask the user before deleting a stale offline teammate. Related threads and messages are removed automatically." },
-      },
-    }))),
-  }]
-}
-
-async function sendHubMessageOrOfflineNotice(input: {
-  hub: HttpAgentSymphonyHubClient
-  directory: string
-  conversationId: string
-  fromInstanceId: string
-  content: string
-  variant?: string
-}): Promise<{ ok: true; message: HubMessage } | { ok: false; summary: string; data: unknown }> {
-  const conversation = await input.hub.getConversation(input.conversationId)
-  if (!conversation) throw new Error(`Unknown hub conversation: ${input.conversationId}`)
-  const targetInstanceId = input.fromInstanceId === conversation.parentInstanceId ? conversation.targetInstanceId : conversation.parentInstanceId
-  const liveInstances = await input.hub.listInstances()
-  if (!liveInstances.some((instance) => instance.id === targetInstanceId)) {
-    const sessionId = await findSessionIdForInstance(input.directory, targetInstanceId)
-    return {
-      ok: false,
-      summary: `Target instance ${targetInstanceId} is offline. Resume it before sending this message.`,
-      data: {
-        conversation: describeConversation(conversation),
-        targetInstanceId,
-        resume: sessionId ? { tool: "agentsymphony_hub_resume_receiver", sessionId } : { tool: "agentsymphony_hub_resume_receiver", sessionId: undefined },
-        unsentMessage: input.content,
-        unsentVariant: input.variant,
-      },
-    }
-  }
-  return { ok: true, message: await input.hub.sendMessage({ conversationId: input.conversationId, fromInstanceId: input.fromInstanceId, content: input.content, variant: input.variant }) }
-}
-
-export async function sendInitialHubMessage(input: {
-  hub: Pick<HttpAgentSymphonyHubClient, "getConversation" | "listInstances" | "sendMessage">
-  directory: string
-  fromInstanceId: string
-  conversation: HubConversation
-  content?: string
-  variant?: string
-}): Promise<HubMessage | undefined> {
-  if (!input.content?.trim()) return undefined
-  const targetInstanceId = input.fromInstanceId === input.conversation.parentInstanceId ? input.conversation.targetInstanceId : input.conversation.parentInstanceId
-  const liveInstances = await input.hub.listInstances()
-  if (!liveInstances.some((instance) => instance.id === targetInstanceId)) throw new Error(`Target instance ${targetInstanceId} is offline. Resume it before sending this message.`)
-  return input.hub.sendMessage({ conversationId: input.conversation.id, fromInstanceId: input.fromInstanceId, content: input.content, variant: input.variant })
-}
-
-async function findVisibleConversationByThread(hub: HttpAgentSymphonyHubClient, instanceId: string, threadName: string): Promise<HubConversation | undefined> {
-  const conversations = await hub.listConversationsForInstance(instanceId)
-  return conversations.find((candidate) => candidate.threadName === threadName)
-}
-
-export async function deleteVisibleTeammate(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance" | "deleteInstance">, instanceId: string, targetInstanceId: string) {
-  const teammate = await findVisibleTeammateByInstanceId(hub, instanceId, targetInstanceId)
-  if (!teammate) throw new Error(`Cannot delete teammate outside this session's visible teammate set: ${targetInstanceId}`)
-  return hub.deleteInstance(targetInstanceId)
-}
-
-async function findVisibleTeammateByInstanceId(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance">, instanceId: string, targetInstanceId: string): Promise<HubConversation | undefined> {
-  if (instanceId === targetInstanceId) return undefined
-  const conversations = await hub.listConversationsForInstance(instanceId)
-  return conversations.find((conversation) => conversation.parentInstanceId === targetInstanceId || conversation.targetInstanceId === targetInstanceId)
-}
-
-function describeConversation(conversation: HubConversation): Pick<HubConversation, "id" | "threadName" | "title" | "parentInstanceId" | "targetInstanceId"> {
-  return {
-    id: conversation.id,
-    threadName: conversation.threadName,
-    title: conversation.title,
-    parentInstanceId: conversation.parentInstanceId,
-    targetInstanceId: conversation.targetInstanceId,
-  }
-}
-
-function defaultThreadName(value: string): string {
-  return `receiver-${value.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(-12)}`
-}
-
-async function findSessionIdForInstance(directory: string, instanceId: string): Promise<string | undefined> {
-  const instancesDirectory = join(directory, ".agentsymphony", "instances")
-  try {
-    const entries = await readdir(instancesDirectory)
-    for (const entry of entries) {
-      if (!entry.startsWith("session-") || !entry.endsWith(".json")) continue
-      const parsed = JSON.parse(await readFile(join(instancesDirectory, entry), "utf8")) as Partial<InstanceIdentity>
-      if (parsed.id === instanceId) return entry.slice("session-".length, -".json".length)
-    }
-  } catch (error) {
-    const code = typeof error === "object" && error && "code" in error ? error.code : undefined
-    if (code !== "ENOENT") throw error
-  }
-  return undefined
 }
 
 export default AgentSymphonyPlugin

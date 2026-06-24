@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { offlineReceiverWarnings } from "../src/plugin.ts"
+import { offlineReceiverWarnings } from "../src/plugin-utils.ts"
 
 describe("offlineReceiverWarnings", () => {
   it("asks whether offline receivers should be resumed or deleted", async () => {

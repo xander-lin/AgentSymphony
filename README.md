@@ -1,17 +1,19 @@
 # AgentSymphony
 
-AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode agent create and talk to other OpenCode conversations as if they were independent user-facing sessions.
+AgentSymphony is an OpenCode-only team plugin. It lets one OpenCode session launch and coordinate teammate sessions as independent interactive agents.
+
+Use the product as a team workflow, not as a low-level routing system: launch teammates for parallel work, send scoped tasks by thread name, and let replies arrive through normal injected messages.
 
 ## Target Architecture
 
-- A top-level agent receives the real user's task.
+- A top-level agent receives the real user's task and decides whether a teammate would reduce risk or latency.
 - A background AgentSymphony hub stays alive and routes messages between OpenCode instances.
 - Every OpenCode instance loads the AgentSymphony plugin at startup and registers with the hub.
-- Parent agents create conversations by binding a parent instance to a target child instance.
+- Parent agents start teammates; launching a teammate automatically creates the communication thread.
 - A pair of OpenCode instances can have at most one hub conversation at a time; duplicate create requests return the existing conversation.
 - Messages are delivered through the hub to the target instance plugin.
 - The target plugin injects incoming text into its own OpenCode session with `session.promptAsync`, so messages show in the TUI and are queued reliably even while the model is busy.
-- The child agent experiences the message as input arriving in its own interactive OpenCode instance, not as a hidden `opencode run` call.
+- The teammate experiences the message as input arriving in its own interactive OpenCode instance, not as a hidden `opencode run` call.
 - Conversations carry a creator marker (`createdByInstanceId`) and a visible `threadName`. Injected prompts hide routing IDs but show the thread name and whether this instance created the thread. The target agent can reply with `agentsymphony_hub_reply`; if multiple threads are active, it can pass the visible thread name and the plugin resolves the route.
 
 ## Current Implementation Status
@@ -28,14 +30,12 @@ AgentSymphony is an OpenCode-only collaboration plugin that lets one OpenCode ag
 - `agentsymphony_read_messages`: reads recorded messages for a conversation.
 - `agentsymphony_open_conversation`: opens a child conversation in a new terminal running the OpenCode TUI.
 - `agentsymphony_list_conversations`: lists known child conversations.
-- `agentsymphony_hub_launch_receiver`: launches a new OpenCode receiver TUI, waits for hub registration, and returns the receiver session id when discoverable. Launch may set `model` dynamically for the new session.
-- `agentsymphony_hub_resume_receiver`: resumes an existing OpenCode receiver session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement. Resume may set only `variant`; it does not change the session model.
+- `agentsymphony_hub_launch_receiver`: starts a new teammate and automatically creates its thread. Launch may set `model`; pass `threadName` if you want a stable name, or omit it to let AgentSymphony generate one. No separate conversation title/description is required.
+- `agentsymphony_hub_resume_receiver`: resumes an offline teammate session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement. Resume may set only `variant`; it does not change the session model.
 - `agentsymphony_hub_system_status`: shows this instance, live peers, visible threads, queued counts, and suggested next tools.
-- `agentsymphony_hub_create_conversation`: creates a hub-routed thread targeting another registered OpenCode instance.
-- `agentsymphony_hub_send_message`: sends a message through a hub-routed conversation. Message delivery may set only `variant`; it does not change the receiver model.
 - `agentsymphony_hub_send_thread`: sends to a visible thread by thread name, resolving routing automatically. Message delivery may set only `variant`; it does not change the receiver model.
 - `agentsymphony_hub_reply`: replies to the latest inbound hub-routed thread, or a named thread. Replies may set only `variant`; they do not change the receiver model.
-- `agentsymphony_hub_list_threads` and `agentsymphony_hub_read_thread`: inspect visible hub threads and recent message history on demand.
+- `agentsymphony_hub_list_threads` and `agentsymphony_hub_read_thread`: inspect visible hub threads and recent message history on demand. These tools are not for polling or receiving new messages; normal hub messages are injected automatically into the target session.
 
 Tool results use a consistent JSON envelope with `ok`, `type`, `summary`, and `data` fields so parent agents can quickly decide what happened before inspecting details.
 
@@ -76,3 +76,41 @@ Hub state is persisted by default to `.agentsymphony/hub-store.json`, including 
 Message history is not injected automatically. Agents can query it on demand with `agentsymphony_hub_list_threads` and `agentsymphony_hub_read_thread`.
 
 After changing `opencode.json` or plugin files, restart OpenCode so the plugin is reloaded.
+
+## NPM Package And Global Install
+
+Build a distributable package locally:
+
+```sh
+npm pack
+```
+
+Install the generated tarball globally:
+
+```sh
+npm install -g ./agentsymphony-0.1.0.tgz
+```
+
+Global commands:
+
+- `agentsymphony-hub`: starts the hub daemon on `127.0.0.1:4777` by default.
+- `agentsymphony-plugin-path`: prints the absolute path to the packaged OpenCode plugin entrypoint.
+
+Configure OpenCode to load the global plugin by adding the printed path to `opencode.json`:
+
+```sh
+agentsymphony-plugin-path
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["/absolute/path/from/agentsymphony-plugin-path"]
+}
+```
+
+Then run the hub and restart OpenCode:
+
+```sh
+agentsymphony-hub
+```

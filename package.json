@@ -1,28 +1,45 @@
 {
   "name": "agentsymphony",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "OpenCode-only agent-to-agent collaboration plugin.",
+  "main": "./dist/plugin.js",
+  "exports": {
+    ".": {
+      "default": "./dist/plugin.js"
+    }
+  },
+  "bin": {
+    "agentsymphony-hub": "./bin/agentsymphony-hub.js",
+    "agentsymphony-plugin-path": "./bin/agentsymphony-plugin-path.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "dashboard:build": "vite build dashboard --outDir ../dist/dashboard",
+    "build": "npm run dashboard:build && tsc -p tsconfig.build.json",
+    "dashboard:build": "vite build dashboard --outDir ../dist/dashboard --emptyOutDir",
     "hub": "tsx src/hub/daemon.ts",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify": "npm run typecheck && npm run dashboard:build && npm run test"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "latest",
-    "@xyflow/react": "^12.11.1",
-    "elkjs": "^0.11.1",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "@opencode-ai/plugin": "latest"
   },
   "devDependencies": {
+    "@xyflow/react": "^12.11.1",
     "@types/node": "latest",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "elkjs": "^0.11.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tsx": "latest",
     "typescript": "latest",
     "vite": "^8.0.16",

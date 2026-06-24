@@ -147,7 +147,6 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           title: tool.schema.string().optional().describe("Optional display title for the launched receiver."),
           prompt: tool.schema.string().optional().describe("Bootstrap prompt to submit when the receiver TUI starts."),
           model: tool.schema.string().optional().describe("Optional provider/model id for the initial receiver session, for example opencode-go/deepseek-v4-pro. Only launch may set model."),
-          variant: tool.schema.string().optional().describe("Optional model variant/reasoning strength for the initial receiver prompt, for example high or minimal."),
           timeoutMs: tool.schema.number().optional().describe("Maximum time to wait for receiver registration."),
         },
         async execute(args) {
@@ -157,7 +156,6 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             title: args.title,
             prompt: args.prompt,
             model: args.model,
-            variant: args.variant,
             timeoutMs: args.timeoutMs,
           })
           return respond("hub.receiver.launched", `Launched receiver ${result.instance.id}.`, result)

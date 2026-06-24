@@ -13,7 +13,6 @@ describe("receiver launcher", () => {
       directory: "/repo",
       prompt: "bootstrap",
       model: "opencode-go/deepseek-v4-pro",
-      variant: "high",
       timeoutMs: 1000,
       pollIntervalMs: 5,
       beforeSessions: [],
@@ -29,8 +28,7 @@ describe("receiver launcher", () => {
     expect(launched.prompt).toBe("bootstrap")
     expect(launched.sessionId).toBe("ses_receiver")
     expect(launched.model).toBe("opencode-go/deepseek-v4-pro")
-    expect(launched.variant).toBe("high")
-    expect(launchOptions).toEqual({ model: "opencode-go/deepseek-v4-pro", variant: "high" })
+    expect(launchOptions).toEqual({ model: "opencode-go/deepseek-v4-pro" })
     expect(launched.instance).toMatchObject({ id: "receiver" })
   })
 

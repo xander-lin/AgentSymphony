@@ -25,7 +25,6 @@ export interface LaunchHubReceiverInput {
   prompt?: string
   timeoutMs?: number
   model?: string
-  variant?: string
   pollIntervalMs?: number
   beforeInstances?: HubInstance[]
   beforeSessions?: OpenCodeSession[]
@@ -63,7 +62,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
   const listSessions = input.listSessions ?? listOpenCodeSessions
   const beforeSessions = new Set((input.beforeSessions ?? await listSessions()).map((session) => session.id))
   const prompt = input.prompt ?? "AgentSymphony bootstrap registration. Reply exactly: AGENTSYMPHONY_RECEIVER_READY"
-  const child = (input.spawnReceiver ?? spawnKittyReceiver)(input.directory, input.title, prompt, { model: input.model, variant: input.variant })
+  const child = (input.spawnReceiver ?? spawnKittyReceiver)(input.directory, input.title, prompt, { model: input.model })
   if (!child.pid) throw new Error("OpenCode receiver process did not report a pid")
   child.unref()
 
@@ -76,7 +75,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
     const [instance] = candidates
     if (instance) {
       const session = await tryFindNewSession(listSessions, beforeSessions, input.directory)
-      return { instance, pid: child.pid, prompt, sessionId: session?.id, model: input.model, variant: input.variant }
+      return { instance, pid: child.pid, prompt, sessionId: session?.id, model: input.model }
     }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
   }
@@ -117,7 +116,7 @@ async function waitForResumedInstance(hub: AgentSymphonyHub, instanceId: string,
 function spawnKittyReceiver(directory: string, title: string | undefined, prompt: string, options: LaunchModelOptions = {}): { pid?: number; unref(): void } {
   const args = ["--detach", "--working-directory", directory]
   if (title) args.push("--title", title)
-  const launch = buildOpenCodeLaunchArgs({ prompt, model: options.model, variant: options.variant })
+  const launch = buildOpenCodeLaunchArgs({ prompt, model: options.model })
   args.push(...launch.args)
   return spawn("kitty", args, { cwd: directory, detached: true, stdio: "ignore", env: launch.env })
 }
@@ -134,20 +133,13 @@ function buildOpenCodeLaunchArgs(input: { sessionId?: string; prompt: string; mo
   const args = ["opencode"]
   const env = { ...process.env }
   if (input.sessionId) args.push("--session", input.sessionId)
-  if (input.variant) {
-    const agent = `agentsymphony-dynamic-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ agent: { [agent]: { mode: "primary", model: input.model, variant: input.variant } } })
-    args.push("--agent", agent)
-  } else if (input.model) {
-    args.push("--model", input.model)
-  }
+  if (input.model) args.push("--model", input.model)
   args.push("--prompt", input.prompt)
   return { args, env }
 }
 
 interface LaunchModelOptions {
   model?: string
-  variant?: string
 }
 
 interface ResumeModelOptions {

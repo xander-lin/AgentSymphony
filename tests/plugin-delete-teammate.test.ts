@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { deleteVisibleTeammate } from "../src/plugin.ts"
+import { deleteVisibleTeammate, sendInitialHubMessage } from "../src/plugin.ts"
+import { MemoryAgentSymphonyHub } from "../src/hub/memory.ts"
 
 const conversation = {
   id: "conv",
@@ -43,5 +44,29 @@ describe("deleteVisibleTeammate", () => {
 
     await expect(deleteVisibleTeammate(hub, "parent", "parent")).rejects.toThrow(/outside this session/)
     await expect(deleteVisibleTeammate(hub, "parent", "unrelated")).rejects.toThrow(/outside this session/)
+  })
+})
+
+describe("sendInitialHubMessage", () => {
+  it("queues first teammate task through the hub", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    const parent = await hub.registerInstance({ id: "parent", name: "parent", directory: "/repo" })
+    const child = await hub.registerInstance({ id: "child", name: "child", directory: "/repo" })
+    const created = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "worker", threadName: "worker" })
+
+    const message = await sendInitialHubMessage({ hub, directory: "/repo", fromInstanceId: parent.id, conversation: created, content: "Do the first task." })
+
+    expect(message).toMatchObject({ content: "Do the first task.", fromInstanceId: parent.id, toInstanceId: child.id })
+    await expect(hub.pollMessages(child.id)).resolves.toEqual([expect.objectContaining({ content: "Do the first task." })])
+  })
+
+  it("does not queue an empty first teammate task", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    const parent = await hub.registerInstance({ id: "parent", name: "parent", directory: "/repo" })
+    const child = await hub.registerInstance({ id: "child", name: "child", directory: "/repo" })
+    const created = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "worker", threadName: "worker" })
+
+    await expect(sendInitialHubMessage({ hub, directory: "/repo", fromInstanceId: parent.id, conversation: created, content: "   " })).resolves.toBeUndefined()
+    await expect(hub.pollMessages(child.id)).resolves.toEqual([])
   })
 })

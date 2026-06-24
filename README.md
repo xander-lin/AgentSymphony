@@ -30,8 +30,8 @@ Use the product as a team workflow, not as a low-level routing system: launch te
 - `agentsymphony_read_messages`: reads recorded messages for a conversation.
 - `agentsymphony_open_conversation`: opens a child conversation in a new terminal running the OpenCode TUI.
 - `agentsymphony_list_conversations`: lists known child conversations.
-- `agentsymphony_hub_launch_receiver`: starts a new teammate and automatically creates its thread. Launch may set `model`; pass `threadName` if you want a stable name, or omit it to let AgentSymphony generate one. No separate conversation title/description is required.
-- `agentsymphony_hub_resume_receiver`: resumes an offline teammate session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement. Resume may set only `variant`; it does not change the session model.
+- `agentsymphony_hub_launch_receiver`: starts a new teammate and automatically creates its thread. Launch may set `model`; pass `threadName` if you want a stable name, or omit it to let AgentSymphony generate one. If `prompt` is supplied, it is delivered as the first hub message with AgentSymphony wrappers after registration, not as raw startup input.
+- `agentsymphony_hub_resume_receiver`: resumes an offline teammate session by session id; if `processId` is supplied and still runs that session, the process is reused instead of launching a replacement. Resume may set only `variant`; it does not change the session model. If `prompt` is supplied, it is delivered through the hub after resume.
 - `agentsymphony_hub_system_status`: shows this instance, live peers, visible threads, queued counts, and suggested next tools.
 - `agentsymphony_hub_send_thread`: sends to a visible thread by thread name, resolving routing automatically. Message delivery may set only `variant`; it does not change the receiver model.
 - `agentsymphony_hub_reply`: replies to the latest inbound hub-routed thread, or a named thread. Replies may set only `variant`; they do not change the receiver model.

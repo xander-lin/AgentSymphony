@@ -25,7 +25,6 @@ export interface LaunchHubReceiverInput {
   hub: AgentSymphonyHub
   directory: string
   title?: string
-  prompt?: string
   timeoutMs?: number
   model?: string
   pollIntervalMs?: number
@@ -51,7 +50,6 @@ export interface ResumeHubReceiverInput {
   sessionId: string
   processId?: number
   title?: string
-  prompt?: string
   timeoutMs?: number
   variant?: string
   pollIntervalMs?: number
@@ -64,7 +62,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
   const before = new Set((input.beforeInstances ?? await input.hub.listInstances()).map((instance) => instance.id))
   const listSessions = input.listSessions ?? listOpenCodeSessions
   const beforeSessions = new Set((input.beforeSessions ?? await listSessions()).map((session) => session.id))
-  const prompt = input.prompt ?? DEFAULT_LAUNCH_PROMPT
+  const prompt = DEFAULT_LAUNCH_PROMPT
   const child = (input.spawnReceiver ?? spawnKittyReceiver)(input.directory, input.title, prompt, { model: input.model })
   if (!child.pid) throw new Error("OpenCode receiver process did not report a pid")
   child.unref()
@@ -89,7 +87,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
 export async function resumeHubReceiver(input: ResumeHubReceiverInput): Promise<LaunchedHubReceiver> {
   const identityStore = input.identityStore ?? new FileInstanceIdentityStore()
   const identity = await identityStore.load(input.directory, input.sessionId)
-  const prompt = input.prompt ?? DEFAULT_RESUME_PROMPT
+  const prompt = DEFAULT_RESUME_PROMPT
   const isSessionProcess = input.isSessionProcess ?? isOpenCodeSessionProcess
   if (input.processId && await isSessionProcess(input.processId, input.sessionId)) {
     const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)

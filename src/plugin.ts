@@ -16,7 +16,7 @@ import { OpenCodeTuiController } from "./tui/opencode.ts"
 const TEAM_SYSTEM_GUIDANCE = `Team workflow guidance:
 - Treat AgentSymphony as your teammate system: launch teammates for parallel, isolated work when delegation reduces risk or latency.
 - Use a teammate for independent research, focused implementation, review, verification, or competing approaches. Keep work local if the task is tiny, tightly sequential, or requires one continuous edit.
-- Start a teammate with agentsymphony_hub_launch_receiver. You do not need a conversation description; use threadName only when a stable short name helps later coordination.
+- Start a teammate with agentsymphony_hub_launch_receiver. You do not need a conversation description; use threadName only when a stable short name helps later coordination. If launch prompt is supplied, it is delivered as the first hub message, not as raw startup input.
 - Send follow-up work with agentsymphony_hub_send_thread. Reply to inbound teammate messages with agentsymphony_hub_reply. Do not poll list/read tools for delivery; teammate messages are injected automatically.
 - Use agentsymphony_hub_system_status when deciding whether to resume or delete offline teammates. Resume useful teammates with agentsymphony_hub_resume_receiver; delete stale offline teammates with agentsymphony_hub_delete_teammate.
 - Model selection: use cheaper/faster models for straightforward lookup, summarization, formatting, and narrow checks; use stronger models for architecture, ambiguous debugging, multi-file edits, or high-stakes review. Launch may set model for a new teammate. Later sends/replies may set variant for that prompt only and do not change the teammate model.
@@ -169,7 +169,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         description: "Team start: launch a new OpenCode teammate and automatically create its thread. No separate create step, target id, or conversation description is needed.",
         args: {
           title: tool.schema.string().optional().describe("Window title only; not a teammate/task description."),
-          prompt: tool.schema.string().optional().describe("Optional startup prompt for the teammate. Do not use it to poll threads; hub messages are injected automatically."),
+          prompt: tool.schema.string().optional().describe("Optional first task message for the teammate. It is delivered through the hub after registration, not as raw startup input."),
           model: tool.schema.string().optional().describe("Initial provider/model id, for example opencode-go/deepseek-v4-pro. Only launch may set model."),
           threadName: tool.schema.string().optional().describe("Stable short name for later send_thread calls. If omitted, AgentSymphony generates one."),
           timeoutMs: tool.schema.number().optional().describe("Maximum milliseconds to wait for receiver registration."),
@@ -181,7 +181,6 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             hub,
             directory,
             title: args.title,
-            prompt: args.prompt,
             model: args.model,
             timeoutMs: args.timeoutMs,
           })
@@ -192,9 +191,11 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             title: threadName,
             threadName,
           })
-          return respondHub({ hub, directory, identity: currentIdentity, type: "hub.receiver.launched", summary: `Launched receiver ${result.instance.id} and connected thread ${conversation.threadName}.`, data: {
+          const initialDelivery = await sendInitialHubMessage({ hub, directory, fromInstanceId: currentIdentity.id, conversation, content: args.prompt })
+          return respondHub({ hub, directory, identity: currentIdentity, type: "hub.receiver.launched", summary: `Launched receiver ${result.instance.id} and connected thread ${conversation.threadName}${initialDelivery ? ", then queued the initial message" : ""}.`, data: {
             ...result,
             thread: describeConversation(conversation),
+            initialMessage: initialDelivery,
           } })
         },
       }),
@@ -204,7 +205,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           sessionId: tool.schema.string().describe("OpenCode session id to resume."),
           processId: tool.schema.number().optional().describe("Existing process id to reuse only if it is still running this same session."),
           title: tool.schema.string().optional().describe("Window title only."),
-          prompt: tool.schema.string().optional().describe("Optional resume prompt for the teammate. Do not use it to poll threads; hub messages are injected automatically."),
+          prompt: tool.schema.string().optional().describe("Optional first task message after resume. It is delivered through the hub, not as raw resume input."),
           variant: tool.schema.string().optional().describe("Variant for the resume prompt only. Resume does not change the session model."),
           timeoutMs: tool.schema.number().optional().describe("Maximum milliseconds to wait for receiver registration."),
         },
@@ -215,11 +216,12 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             sessionId: args.sessionId,
             processId: args.processId,
             title: args.title,
-            prompt: args.prompt,
             variant: args.variant,
             timeoutMs: args.timeoutMs,
           })
-          return respondHub({ hub, directory, identity, type: "hub.receiver.resumed", summary: `Resumed receiver ${result.instance.id}.`, data: result })
+          const conversation = identity ? await findVisibleTeammateByInstanceId(hub, identity.id, result.instance.id) : undefined
+          const initialDelivery = conversation && identity ? await sendInitialHubMessage({ hub, directory, fromInstanceId: identity.id, conversation, content: args.prompt, variant: args.variant }) : undefined
+          return respondHub({ hub, directory, identity, type: "hub.receiver.resumed", summary: `Resumed receiver ${result.instance.id}${initialDelivery ? ", then queued the initial message" : ""}.`, data: { ...result, initialMessage: initialDelivery } })
         },
       }),
       agentsymphony_hub_send_thread: tool({
@@ -515,6 +517,21 @@ async function sendHubMessageOrOfflineNotice(input: {
     }
   }
   return { ok: true, message: await input.hub.sendMessage({ conversationId: input.conversationId, fromInstanceId: input.fromInstanceId, content: input.content, variant: input.variant }) }
+}
+
+export async function sendInitialHubMessage(input: {
+  hub: Pick<HttpAgentSymphonyHubClient, "getConversation" | "listInstances" | "sendMessage">
+  directory: string
+  fromInstanceId: string
+  conversation: HubConversation
+  content?: string
+  variant?: string
+}): Promise<HubMessage | undefined> {
+  if (!input.content?.trim()) return undefined
+  const targetInstanceId = input.fromInstanceId === input.conversation.parentInstanceId ? input.conversation.targetInstanceId : input.conversation.parentInstanceId
+  const liveInstances = await input.hub.listInstances()
+  if (!liveInstances.some((instance) => instance.id === targetInstanceId)) throw new Error(`Target instance ${targetInstanceId} is offline. Resume it before sending this message.`)
+  return input.hub.sendMessage({ conversationId: input.conversation.id, fromInstanceId: input.fromInstanceId, content: input.content, variant: input.variant })
 }
 
 async function findVisibleConversationByThread(hub: HttpAgentSymphonyHubClient, instanceId: string, threadName: string): Promise<HubConversation | undefined> {

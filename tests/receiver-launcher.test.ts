@@ -11,7 +11,6 @@ describe("receiver launcher", () => {
     const launched = await launchHubReceiver({
       hub,
       directory: "/repo",
-      prompt: "bootstrap",
       model: "opencode-go/deepseek-v4-pro",
       timeoutMs: 1000,
       pollIntervalMs: 5,
@@ -25,7 +24,7 @@ describe("receiver launcher", () => {
     })
 
     expect(launched.pid).toBe(123)
-    expect(launched.prompt).toBe("bootstrap")
+    expect(launched.prompt).toContain("receiver registration only")
     expect(launched.sessionId).toBe("ses_receiver")
     expect(launched.model).toBe("opencode-go/deepseek-v4-pro")
     expect(launchOptions).toEqual({ model: "opencode-go/deepseek-v4-pro" })
@@ -38,7 +37,6 @@ describe("receiver launcher", () => {
     const launched = await launchHubReceiver({
       hub,
       directory: "/repo",
-      prompt: "bootstrap",
       timeoutMs: 1000,
       pollIntervalMs: 5,
       beforeSessions: [],

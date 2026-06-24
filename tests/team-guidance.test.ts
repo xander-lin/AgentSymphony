@@ -18,7 +18,12 @@ describe("team system guidance", () => {
 
     expect(output.system).toHaveLength(2)
     expect(output.system[1]).toContain("Team workflow guidance")
-    expect(output.system[1]).toContain("launch teammates")
+    expect(output.system[1]).toContain("team lead")
+    expect(output.system[1]).toContain("team member")
+    expect(output.system[1]).toContain("profitably split")
+    expect(output.system[1]).toContain("continue using the team tools")
+    expect(output.system[1]).toContain("Communicate early")
+    expect(output.system[1]).toContain("launch more teammates")
     expect(output.system[1]).toContain("Model selection")
     expect(output.system[1]).toContain("agentsymphony_hub_launch_receiver")
   })

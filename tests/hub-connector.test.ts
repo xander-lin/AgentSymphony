@@ -48,7 +48,7 @@ describe("startHubConnector", () => {
       const status = connector.getStatus()
       if (!status.connected) throw new Error("Expected connector to be connected")
       const conversation = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: status.instance.id, title: "task", threadName: "reviewer" })
-      await hub.sendMessage({ conversationId: conversation.id, fromInstanceId: parent.id, content: "Injected through connector." })
+      await hub.sendMessage({ conversationId: conversation.id, fromInstanceId: parent.id, content: "Injected through connector.", variant: "high" })
       await waitFor(() => tui.prompts.length === 1)
 
       expect(tui.prompts).toHaveLength(1)
@@ -57,6 +57,7 @@ describe("startHubConnector", () => {
       expect(tui.prompts[0]).toContain("Thread: reviewer")
       expect(tui.prompts[0]).toContain("agentsymphony_hub_reply")
       expect(tui.prompts[0]).toContain("Injected through connector.")
+      expect(tui.variants).toEqual(["high"])
       await expect(replyContext.getLatest()).resolves.toMatchObject({ conversationId: conversation.id, threadName: "reviewer", createdByThisInstance: false })
       await expect(replyContext.getByThread("reviewer")).resolves.toMatchObject({ conversationId: conversation.id })
       expect(await hub.pollMessages(status.instance.id)).toEqual([])

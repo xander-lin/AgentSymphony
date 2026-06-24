@@ -5,8 +5,8 @@ import { join } from "node:path"
 import { FileInstanceIdentityStore, type InstanceIdentityStore } from "../instance/identity.ts"
 import type { AgentSymphonyHub, HubInstance } from "./types.ts"
 
-type SpawnReceiver = (directory: string, title: string | undefined, prompt: string) => { pid?: number; unref(): void }
-type SpawnResumedReceiver = (directory: string, title: string | undefined, sessionId: string, prompt: string) => { pid?: number; unref(): void }
+type SpawnReceiver = (directory: string, title: string | undefined, prompt: string, options?: LaunchModelOptions) => { pid?: number; unref(): void }
+type SpawnResumedReceiver = (directory: string, title: string | undefined, sessionId: string, prompt: string, options?: ResumeModelOptions) => { pid?: number; unref(): void }
 type IsSessionProcess = (processId: number, sessionId: string) => Promise<boolean>
 type ListSessions = () => Promise<OpenCodeSession[]>
 
@@ -24,6 +24,8 @@ export interface LaunchHubReceiverInput {
   title?: string
   prompt?: string
   timeoutMs?: number
+  model?: string
+  variant?: string
   pollIntervalMs?: number
   beforeInstances?: HubInstance[]
   beforeSessions?: OpenCodeSession[]
@@ -36,6 +38,8 @@ export interface LaunchedHubReceiver {
   pid: number
   prompt: string
   sessionId?: string
+  model?: string
+  variant?: string
   reused?: boolean
 }
 
@@ -47,6 +51,7 @@ export interface ResumeHubReceiverInput {
   title?: string
   prompt?: string
   timeoutMs?: number
+  variant?: string
   pollIntervalMs?: number
   spawnReceiver?: SpawnResumedReceiver
   isSessionProcess?: IsSessionProcess
@@ -58,7 +63,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
   const listSessions = input.listSessions ?? listOpenCodeSessions
   const beforeSessions = new Set((input.beforeSessions ?? await listSessions()).map((session) => session.id))
   const prompt = input.prompt ?? "AgentSymphony bootstrap registration. Reply exactly: AGENTSYMPHONY_RECEIVER_READY"
-  const child = (input.spawnReceiver ?? spawnKittyReceiver)(input.directory, input.title, prompt)
+  const child = (input.spawnReceiver ?? spawnKittyReceiver)(input.directory, input.title, prompt, { model: input.model, variant: input.variant })
   if (!child.pid) throw new Error("OpenCode receiver process did not report a pid")
   child.unref()
 
@@ -71,7 +76,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
     const [instance] = candidates
     if (instance) {
       const session = await tryFindNewSession(listSessions, beforeSessions, input.directory)
-      return { instance, pid: child.pid, prompt, sessionId: session?.id }
+      return { instance, pid: child.pid, prompt, sessionId: session?.id, model: input.model, variant: input.variant }
     }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
   }
@@ -86,15 +91,15 @@ export async function resumeHubReceiver(input: ResumeHubReceiverInput): Promise<
   const isSessionProcess = input.isSessionProcess ?? isOpenCodeSessionProcess
   if (input.processId && await isSessionProcess(input.processId, input.sessionId)) {
     const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)
-    return { instance, pid: input.processId, prompt, sessionId: input.sessionId, reused: true }
+    return { instance, pid: input.processId, prompt, sessionId: input.sessionId, variant: input.variant, reused: true }
   }
 
-  const child = (input.spawnReceiver ?? spawnKittyResumedReceiver)(input.directory, input.title, input.sessionId, prompt)
+  const child = (input.spawnReceiver ?? spawnKittyResumedReceiver)(input.directory, input.title, input.sessionId, prompt, { variant: input.variant })
   if (!child.pid) throw new Error("OpenCode receiver process did not report a pid")
   child.unref()
 
   const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)
-  return { instance, pid: child.pid, prompt, sessionId: input.sessionId, reused: false }
+  return { instance, pid: child.pid, prompt, sessionId: input.sessionId, variant: input.variant, reused: false }
 }
 
 async function waitForResumedInstance(hub: AgentSymphonyHub, instanceId: string, directory: string, timeoutMs: number, pollIntervalMs: number): Promise<HubInstance> {
@@ -109,18 +114,44 @@ async function waitForResumedInstance(hub: AgentSymphonyHub, instanceId: string,
   throw new Error(`Timed out waiting for resumed OpenCode instance ${instanceId} to register with AgentSymphony hub`)
 }
 
-function spawnKittyReceiver(directory: string, title: string | undefined, prompt: string): { pid?: number; unref(): void } {
+function spawnKittyReceiver(directory: string, title: string | undefined, prompt: string, options: LaunchModelOptions = {}): { pid?: number; unref(): void } {
   const args = ["--detach", "--working-directory", directory]
   if (title) args.push("--title", title)
-  args.push("opencode", "--prompt", prompt)
-  return spawn("kitty", args, { cwd: directory, detached: true, stdio: "ignore" })
+  const launch = buildOpenCodeLaunchArgs({ prompt, model: options.model, variant: options.variant })
+  args.push(...launch.args)
+  return spawn("kitty", args, { cwd: directory, detached: true, stdio: "ignore", env: launch.env })
 }
 
-function spawnKittyResumedReceiver(directory: string, title: string | undefined, sessionId: string, prompt: string): { pid?: number; unref(): void } {
+function spawnKittyResumedReceiver(directory: string, title: string | undefined, sessionId: string, prompt: string, options: ResumeModelOptions = {}): { pid?: number; unref(): void } {
   const args = ["--detach", "--working-directory", directory]
   if (title) args.push("--title", title)
-  args.push("opencode", "--session", sessionId, "--prompt", prompt)
-  return spawn("kitty", args, { cwd: directory, detached: true, stdio: "ignore", env: { ...process.env, AGENTSYMPHONY_RESUME_SESSION_ID: sessionId } })
+  const launch = buildOpenCodeLaunchArgs({ sessionId, prompt, variant: options.variant })
+  args.push(...launch.args)
+  return spawn("kitty", args, { cwd: directory, detached: true, stdio: "ignore", env: { ...launch.env, AGENTSYMPHONY_RESUME_SESSION_ID: sessionId } })
+}
+
+function buildOpenCodeLaunchArgs(input: { sessionId?: string; prompt: string; model?: string; variant?: string }): { args: string[]; env: NodeJS.ProcessEnv } {
+  const args = ["opencode"]
+  const env = { ...process.env }
+  if (input.sessionId) args.push("--session", input.sessionId)
+  if (input.variant) {
+    const agent = `agentsymphony-dynamic-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ agent: { [agent]: { mode: "primary", model: input.model, variant: input.variant } } })
+    args.push("--agent", agent)
+  } else if (input.model) {
+    args.push("--model", input.model)
+  }
+  args.push("--prompt", input.prompt)
+  return { args, env }
+}
+
+interface LaunchModelOptions {
+  model?: string
+  variant?: string
+}
+
+interface ResumeModelOptions {
+  variant?: string
 }
 
 async function findNewSession(listSessions: ListSessions, beforeSessions: Set<string>, directory: string): Promise<OpenCodeSession | undefined> {

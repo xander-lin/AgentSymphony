@@ -146,6 +146,8 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         args: {
           title: tool.schema.string().optional().describe("Optional display title for the launched receiver."),
           prompt: tool.schema.string().optional().describe("Bootstrap prompt to submit when the receiver TUI starts."),
+          model: tool.schema.string().optional().describe("Optional provider/model id for the initial receiver session, for example opencode-go/deepseek-v4-pro. Only launch may set model."),
+          variant: tool.schema.string().optional().describe("Optional model variant/reasoning strength for the initial receiver prompt, for example high or minimal."),
           timeoutMs: tool.schema.number().optional().describe("Maximum time to wait for receiver registration."),
         },
         async execute(args) {
@@ -154,6 +156,8 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             directory,
             title: args.title,
             prompt: args.prompt,
+            model: args.model,
+            variant: args.variant,
             timeoutMs: args.timeoutMs,
           })
           return respond("hub.receiver.launched", `Launched receiver ${result.instance.id}.`, result)
@@ -166,6 +170,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           processId: tool.schema.number().optional().describe("Optional existing OpenCode process id. If it is still running this session, the process is reused."),
           title: tool.schema.string().optional().describe("Optional display title for the resumed receiver."),
           prompt: tool.schema.string().optional().describe("Bootstrap prompt to submit when the receiver TUI resumes."),
+          variant: tool.schema.string().optional().describe("Optional model variant/reasoning strength for the resumed prompt. Resume does not change model."),
           timeoutMs: tool.schema.number().optional().describe("Maximum time to wait for receiver registration."),
         },
         async execute(args) {
@@ -176,6 +181,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             processId: args.processId,
             title: args.title,
             prompt: args.prompt,
+            variant: args.variant,
             timeoutMs: args.timeoutMs,
           })
           return respond("hub.receiver.resumed", `Resumed receiver ${result.instance.id}.`, result)
@@ -205,6 +211,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         args: {
           conversationId: tool.schema.string().describe("AgentSymphony hub conversation id."),
           message: tool.schema.string().describe("Message to inject into the target instance's TUI."),
+          variant: tool.schema.string().optional().describe("Optional model variant/reasoning strength for this delivered message. Message sending cannot change model."),
         },
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
@@ -215,6 +222,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             conversationId: args.conversationId,
             fromInstanceId: currentIdentity.id,
             content: args.message,
+            variant: args.variant,
           })
           return result.ok
             ? respond("hub.message.sent", `Queued hub message ${result.message.id}.`, result.message)
@@ -226,6 +234,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         args: {
           thread: tool.schema.string().describe("Visible AgentSymphony thread name."),
           message: tool.schema.string().describe("Message to send to the other instance in this thread."),
+          variant: tool.schema.string().optional().describe("Optional model variant/reasoning strength for this delivered message. Message sending cannot change model."),
         },
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
@@ -238,6 +247,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             conversationId: conversation.id,
             fromInstanceId: currentIdentity.id,
             content: args.message,
+            variant: args.variant,
           })
           return result.ok
             ? respond("hub.thread.sent", `Queued message ${result.message.id} to thread ${args.thread}.`, { message: result.message, thread: describeConversation(conversation) })
@@ -249,6 +259,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         args: {
           thread: tool.schema.string().optional().describe("Optional visible AgentSymphony thread name. If omitted, replies to the latest inbound thread."),
           message: tool.schema.string().describe("Reply message to send back to the originating AgentSymphony conversation."),
+          variant: tool.schema.string().optional().describe("Optional model variant/reasoning strength for this reply. Replying cannot change model."),
         },
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
@@ -261,6 +272,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
             conversationId: context.conversationId,
             fromInstanceId: currentIdentity.id,
             content: args.message,
+            variant: args.variant,
           })
           return result.ok
             ? respond("hub.reply.sent", `Queued reply ${result.message.id}.`, { message: result.message, context })
@@ -422,6 +434,7 @@ async function sendHubMessageOrOfflineNotice(input: {
   conversationId: string
   fromInstanceId: string
   content: string
+  variant?: string
 }): Promise<{ ok: true; message: HubMessage } | { ok: false; summary: string; data: unknown }> {
   const conversation = await input.hub.getConversation(input.conversationId)
   if (!conversation) throw new Error(`Unknown hub conversation: ${input.conversationId}`)
@@ -437,10 +450,11 @@ async function sendHubMessageOrOfflineNotice(input: {
         targetInstanceId,
         resume: sessionId ? { tool: "agentsymphony_hub_resume_receiver", sessionId } : { tool: "agentsymphony_hub_resume_receiver", sessionId: undefined },
         unsentMessage: input.content,
+        unsentVariant: input.variant,
       },
     }
   }
-  return { ok: true, message: await input.hub.sendMessage({ conversationId: input.conversationId, fromInstanceId: input.fromInstanceId, content: input.content }) }
+  return { ok: true, message: await input.hub.sendMessage({ conversationId: input.conversationId, fromInstanceId: input.fromInstanceId, content: input.content, variant: input.variant }) }
 }
 
 async function findVisibleConversationByThread(hub: HttpAgentSymphonyHubClient, instanceId: string, threadName: string): Promise<HubConversation | undefined> {

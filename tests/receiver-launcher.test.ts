@@ -5,17 +5,21 @@ import { launchHubReceiver, resumeHubReceiver } from "../src/hub/receiver-launch
 describe("receiver launcher", () => {
   it("waits for a newly registered receiver instance", async () => {
     const hub = new MemoryAgentSymphonyHub()
+    let launchOptions: unknown
     await hub.registerInstance({ id: "existing", name: "existing", directory: "/repo" })
 
     const launched = await launchHubReceiver({
       hub,
       directory: "/repo",
       prompt: "bootstrap",
+      model: "opencode-go/deepseek-v4-pro",
+      variant: "high",
       timeoutMs: 1000,
       pollIntervalMs: 5,
       beforeSessions: [],
       listSessions: async () => [{ id: "ses_receiver", directory: "/repo", title: "bootstrap", time_created: 2, time_updated: 2 }],
-      spawnReceiver() {
+      spawnReceiver(_directory, _title, _prompt, options) {
+        launchOptions = options
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
         return { pid: 123, unref() {} }
       },
@@ -24,6 +28,9 @@ describe("receiver launcher", () => {
     expect(launched.pid).toBe(123)
     expect(launched.prompt).toBe("bootstrap")
     expect(launched.sessionId).toBe("ses_receiver")
+    expect(launched.model).toBe("opencode-go/deepseek-v4-pro")
+    expect(launched.variant).toBe("high")
+    expect(launchOptions).toEqual({ model: "opencode-go/deepseek-v4-pro", variant: "high" })
     expect(launched.instance).toMatchObject({ id: "receiver" })
   })
 
@@ -53,6 +60,7 @@ describe("receiver launcher", () => {
   it("resumes an existing receiver session by stable session identity", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const identityFileWrites: Array<{ directory: string; sessionId: string }> = []
+    let resumeOptions: unknown
 
     await hub.registerInstance({ id: "existing", name: "existing", directory: "/repo" })
 
@@ -60,6 +68,7 @@ describe("receiver launcher", () => {
       hub,
       directory: "/repo",
       sessionId: "ses_receiver",
+      variant: "minimal",
       timeoutMs: 1000,
       pollIntervalMs: 5,
       identityStore: {
@@ -69,7 +78,8 @@ describe("receiver launcher", () => {
           return { id: "receiver", name: "receiver", directory }
         },
       },
-      spawnReceiver() {
+      spawnReceiver(_directory, _title, _sessionId, _prompt, options) {
+        resumeOptions = options
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
         return { pid: 456, unref() {} }
       },
@@ -78,6 +88,8 @@ describe("receiver launcher", () => {
     expect(identityFileWrites).toEqual([{ directory: "/repo", sessionId: "ses_receiver" }])
     expect(resumed.pid).toBe(456)
     expect(resumed.sessionId).toBe("ses_receiver")
+    expect(resumed.variant).toBe("minimal")
+    expect(resumeOptions).toEqual({ variant: "minimal" })
     expect(resumed.instance).toMatchObject({ id: "receiver" })
   })
 

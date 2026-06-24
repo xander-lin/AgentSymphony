@@ -109,6 +109,7 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
         fromInstanceId: input.fromInstanceId,
         toInstanceId,
         content: input.content,
+        variant: input.variant,
         createdAt: this.nowIso(),
         status: "queued",
       }

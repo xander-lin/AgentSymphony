@@ -52,7 +52,7 @@ export function startHubConnector(options: HubConnectorOptions): HubConnectorHan
         if (!conversation) continue
         const createdByThisInstance = conversation.createdByInstanceId === instance.id
         await options.replyContext.setFromMessage({ message, threadName: conversation.threadName, createdByThisInstance })
-        await options.tui.injectPrompt(formatInjectedHubPrompt(message, conversation, createdByThisInstance))
+        await options.tui.injectPrompt(formatInjectedHubPrompt(message, conversation, createdByThisInstance), { variant: message.variant })
         await options.hub.acknowledgeMessage(message.id)
       }
     } catch (error) {

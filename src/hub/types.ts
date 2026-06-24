@@ -27,6 +27,7 @@ export interface HubMessage {
   fromInstanceId: string
   toInstanceId: string
   content: string
+  variant?: string
   createdAt: string
   status: HubMessageStatus
 }
@@ -50,6 +51,7 @@ export interface SendHubMessageInput {
   conversationId: string
   fromInstanceId: string
   content: string
+  variant?: string
 }
 
 export interface AgentSymphonyHub {

@@ -20,6 +20,19 @@ describe("MemoryAgentSymphonyHub", () => {
     expect(inbox[0]?.status).toBe("delivered")
   })
 
+  it("preserves per-message variants without changing conversations", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })
+    const child = await hub.registerInstance({ name: "child", directory: "/repo" })
+    const conversation = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "variant task" })
+
+    const sent = await hub.sendMessage({ conversationId: conversation.id, fromInstanceId: parent.id, content: "Use more reasoning.", variant: "high" })
+    const [inbox] = await hub.pollMessages(child.id)
+
+    expect(sent.variant).toBe("high")
+    expect(inbox?.variant).toBe("high")
+  })
+
   it("allows only one conversation between the same two instances", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })

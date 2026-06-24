@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { formatInjectedHubPrompt } from "../src/hub/prompt.ts"
 
 describe("formatInjectedHubPrompt", () => {
-  it("hides routing metadata and includes transparent reply instructions", () => {
+  it("hides routing metadata and keeps tool guidance out of injected messages", () => {
     const prompt = formatInjectedHubPrompt(
       {
         id: "hubmsg_1",
@@ -33,9 +33,11 @@ describe("formatInjectedHubPrompt", () => {
     expect(prompt).toContain("<<<END AGENTSYMPHONY:reviewer>>>")
     expect(prompt).toContain("Thread: reviewer")
     expect(prompt).toContain("Origin: created elsewhere")
-    expect(prompt).toContain("agentsymphony_hub_reply")
-    expect(prompt).toContain("agentsymphony_hub_read_thread")
-    expect(prompt).toContain("agentsymphony_hub_system_status")
+    expect(prompt).not.toContain("agentsymphony_hub_reply")
+    expect(prompt).not.toContain("agentsymphony_hub_read_thread")
+    expect(prompt).not.toContain("agentsymphony_hub_system_status")
+    expect(prompt).not.toContain("messages are injected automatically")
+    expect(prompt).not.toContain("do not poll")
     expect(prompt).toContain("Please review the API.")
   })
 

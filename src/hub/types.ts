@@ -54,6 +54,18 @@ export interface SendHubMessageInput {
   variant?: string
 }
 
+export interface ArchiveHubThreadResult {
+  conversation?: HubConversation
+  removedMessages: number
+  removedInstances: HubInstance[]
+}
+
+export interface DeleteHubInstanceResult {
+  instance?: HubInstance
+  removedConversations: HubConversation[]
+  removedMessages: number
+}
+
 export interface AgentSymphonyHub {
   registerInstance(input: RegisterInstanceInput): Promise<HubInstance>
   heartbeat(instanceId: string): Promise<HubInstance>
@@ -61,6 +73,8 @@ export interface AgentSymphonyHub {
   createConversation(input: CreateHubConversationInput): Promise<HubConversation>
   getConversation(conversationId: string): Promise<HubConversation | undefined>
   listConversationsForInstance(instanceId: string): Promise<HubConversation[]>
+  archiveThread(threadName: string): Promise<ArchiveHubThreadResult>
+  deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult>
   sendMessage(input: SendHubMessageInput): Promise<HubMessage>
   listMessagesForConversation(conversationId: string, limit?: number): Promise<HubMessage[]>
   pollMessages(instanceId: string): Promise<HubMessage[]>

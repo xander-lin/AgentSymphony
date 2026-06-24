@@ -6,8 +6,6 @@ export function formatInjectedHubPrompt(message: HubMessage, conversation: HubCo
     `<<<AGENTSYMPHONY:${thread}>>>`,
     `Thread: ${conversation.threadName}`,
     `Origin: ${createdByThisInstance ? "created here" : "created elsewhere"}`,
-    "Tools: reply with `agentsymphony_hub_reply({ message })`; include `thread` only if handling multiple threads.",
-    "Tools: read history with `agentsymphony_hub_read_thread({ thread })`; inspect system with `agentsymphony_hub_system_status()`.",
     "",
     "Message:",
     message.content,

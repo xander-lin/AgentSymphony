@@ -55,7 +55,7 @@ describe("startHubConnector", () => {
       expect(tui.prompts[0]).not.toContain(conversation.id)
       expect(tui.prompts[0]).toContain("<<<AGENTSYMPHONY:reviewer>>>")
       expect(tui.prompts[0]).toContain("Thread: reviewer")
-      expect(tui.prompts[0]).toContain("agentsymphony_hub_reply")
+      expect(tui.prompts[0]).not.toContain("agentsymphony_hub_reply")
       expect(tui.prompts[0]).toContain("Injected through connector.")
       expect(tui.variants).toEqual(["high"])
       await expect(replyContext.getLatest()).resolves.toMatchObject({ conversationId: conversation.id, threadName: "reviewer", createdByThisInstance: false })

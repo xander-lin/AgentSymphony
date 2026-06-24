@@ -3,7 +3,9 @@ import { MemoryHubStore } from "./memory-store.ts"
 import type { HubStore } from "./store.ts"
 import type {
   AgentSymphonyHub,
+  ArchiveHubThreadResult,
   CreateHubConversationInput,
+  DeleteHubInstanceResult,
   HubConversation,
   HubInstance,
   HubMessage,
@@ -92,6 +94,64 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
     return [...snapshot.conversations.values()]
       .filter((conversation) => conversation.parentInstanceId === instanceId || conversation.targetInstanceId === instanceId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  }
+
+  async archiveThread(threadName: string): Promise<ArchiveHubThreadResult> {
+    return this.write(async () => {
+      const snapshot = await this.loadSnapshot()
+      const conversation = [...snapshot.conversations.values()].find((candidate) => candidate.threadName === threadName)
+      if (!conversation) return { removedMessages: 0, removedInstances: [] }
+
+      snapshot.conversations.delete(conversation.id)
+      let removedMessages = 0
+      for (const message of snapshot.messages.values()) {
+        if (message.conversationId !== conversation.id) continue
+        snapshot.messages.delete(message.id)
+        removedMessages += 1
+      }
+
+      const connectedInstanceIds = new Set<string>()
+      for (const remaining of snapshot.conversations.values()) {
+        connectedInstanceIds.add(remaining.parentInstanceId)
+        connectedInstanceIds.add(remaining.targetInstanceId)
+      }
+
+      const removedInstances: HubInstance[] = []
+      for (const instanceId of [conversation.parentInstanceId, conversation.targetInstanceId]) {
+        if (connectedInstanceIds.has(instanceId)) continue
+        const instance = snapshot.instances.get(instanceId)
+        if (!instance || this.isLive(instance)) continue
+        snapshot.instances.delete(instanceId)
+        removedInstances.push(instance)
+      }
+
+      await this.saveSnapshot(snapshot)
+      return { conversation, removedMessages, removedInstances }
+    })
+  }
+
+  async deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult> {
+    return this.write(async () => {
+      const snapshot = await this.loadSnapshot()
+      const instance = snapshot.instances.get(instanceId)
+      if (!instance) return { removedConversations: [], removedMessages: 0 }
+      if (this.isLive(instance)) throw new Error(`Cannot delete live AgentSymphony instance: ${instanceId}`)
+
+      const removedConversations = [...snapshot.conversations.values()].filter((conversation) => conversation.parentInstanceId === instanceId || conversation.targetInstanceId === instanceId)
+      const removedConversationIds = new Set(removedConversations.map((conversation) => conversation.id))
+      for (const conversation of removedConversations) snapshot.conversations.delete(conversation.id)
+
+      let removedMessages = 0
+      for (const message of snapshot.messages.values()) {
+        if (!removedConversationIds.has(message.conversationId) && message.fromInstanceId !== instanceId && message.toInstanceId !== instanceId) continue
+        snapshot.messages.delete(message.id)
+        removedMessages += 1
+      }
+
+      snapshot.instances.delete(instanceId)
+      await this.saveSnapshot(snapshot)
+      return { instance, removedConversations, removedMessages }
+    })
   }
 
   async sendMessage(input: SendHubMessageInput): Promise<HubMessage> {

@@ -1,6 +1,8 @@
 import type {
   AgentSymphonyHub,
+  ArchiveHubThreadResult,
   CreateHubConversationInput,
+  DeleteHubInstanceResult,
   HubConversation,
   HubInstance,
   HubMessage,
@@ -33,6 +35,14 @@ export class HttpAgentSymphonyHubClient implements AgentSymphonyHub {
 
   listConversationsForInstance(instanceId: string): Promise<HubConversation[]> {
     return this.request(`/instances/${encodeURIComponent(instanceId)}/conversations`)
+  }
+
+  archiveThread(threadName: string): Promise<ArchiveHubThreadResult> {
+    return this.request(`/threads/${encodeURIComponent(threadName)}/archive`, { method: "POST" })
+  }
+
+  deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult> {
+    return this.request(`/instances/${encodeURIComponent(instanceId)}`, { method: "DELETE" })
   }
 
   sendMessage(input: SendHubMessageInput): Promise<HubMessage> {

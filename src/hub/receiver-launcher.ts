@@ -10,6 +10,9 @@ type SpawnResumedReceiver = (directory: string, title: string | undefined, sessi
 type IsSessionProcess = (processId: number, sessionId: string) => Promise<boolean>
 type ListSessions = () => Promise<OpenCodeSession[]>
 
+const DEFAULT_LAUNCH_PROMPT = "AgentSymphony receiver registration only. Do not list, read, or poll AgentSymphony threads. Do not start shell polling loops. Wait for injected AgentSymphony messages from the hub connector."
+const DEFAULT_RESUME_PROMPT = "AgentSymphony receiver resume registration only. Do not list, read, or poll AgentSymphony threads. Do not start shell polling loops. Wait for injected AgentSymphony messages from the hub connector."
+
 export interface OpenCodeSession {
   id: string
   directory: string
@@ -61,7 +64,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
   const before = new Set((input.beforeInstances ?? await input.hub.listInstances()).map((instance) => instance.id))
   const listSessions = input.listSessions ?? listOpenCodeSessions
   const beforeSessions = new Set((input.beforeSessions ?? await listSessions()).map((session) => session.id))
-  const prompt = input.prompt ?? "AgentSymphony bootstrap registration. Reply exactly: AGENTSYMPHONY_RECEIVER_READY"
+  const prompt = input.prompt ?? DEFAULT_LAUNCH_PROMPT
   const child = (input.spawnReceiver ?? spawnKittyReceiver)(input.directory, input.title, prompt, { model: input.model })
   if (!child.pid) throw new Error("OpenCode receiver process did not report a pid")
   child.unref()
@@ -86,7 +89,7 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
 export async function resumeHubReceiver(input: ResumeHubReceiverInput): Promise<LaunchedHubReceiver> {
   const identityStore = input.identityStore ?? new FileInstanceIdentityStore()
   const identity = await identityStore.load(input.directory, input.sessionId)
-  const prompt = input.prompt ?? "AgentSymphony resume registration. First call agentsymphony_hub_status, then reply exactly: AGENTSYMPHONY_RECEIVER_RESUMED"
+  const prompt = input.prompt ?? DEFAULT_RESUME_PROMPT
   const isSessionProcess = input.isSessionProcess ?? isOpenCodeSessionProcess
   if (input.processId && await isSessionProcess(input.processId, input.sessionId)) {
     const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)

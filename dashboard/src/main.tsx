@@ -208,12 +208,14 @@ async function layoutGraph(nodes: Node<GraphNodeData>[], edges: Edge[]): Promise
   return nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }))
 }
 
-function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread }: {
+function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread, onArchiveThread, onDeleteInstance }: {
   menu: { x: number; y: number; node: Node<GraphNodeData> } | null
   onClose: () => void
   onInspect: (node: Node<GraphNodeData>) => void
   onFocusNode: (nodeId: string) => void
   onCopyThread: (node: Node<GraphNodeData>) => void
+  onArchiveThread: (node: Node<GraphNodeData>) => void
+  onDeleteInstance: (node: Node<GraphNodeData>) => void
 }) {
   if (!menu) return null
   const data = menu.node.data
@@ -221,15 +223,17 @@ function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread }: {
     <div className="context-menu" role="menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={onClose}>
       <button type="button" onClick={() => onInspect(menu.node)}>Inspect</button>
       <button type="button" onClick={() => { void navigator.clipboard?.writeText(menu.node.id); onClose() }}>Copy Node ID</button>
+      {data.kind === "instance" && data.instance.online === false && <button type="button" className="danger" onClick={() => onDeleteInstance(menu.node)}>Delete Offline Instance</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onCopyThread(menu.node)}>Copy Latest Thread</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.createdByInstanceId}`)}>Focus Creator</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.targetInstanceId}`)}>Focus Target</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onInspect(menu.node)}>View Messages</button>}
+      {data.kind === "relationship" && <button type="button" className="danger" onClick={() => onArchiveThread(menu.node)}>Archive Latest Thread</button>}
     </div>
   )
 }
 
-function DetailsDrawer({ node, instancesById, conversations, onClose }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; conversations: HubConversation[]; onClose: () => void }) {
+function DetailsDrawer({ node, instancesById, conversations, onClose, onArchiveThread, onDeleteInstance }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; conversations: HubConversation[]; onClose: () => void; onArchiveThread: (threadName: string) => void; onDeleteInstance: (instanceId: string) => void }) {
   if (!node) return null
   if (node.data.kind === "relationship") {
     const { relationship, messages } = node.data
@@ -244,7 +248,7 @@ function DetailsDrawer({ node, instancesById, conversations, onClose }: { node: 
           <div><dt>Updated</dt><dd>{formatTime(relationship.updatedAt)}</dd></div>
         </dl>
         <div className="thread-list">
-          {relationship.conversations.map((conversation) => <span key={conversation.id}>{conversation.threadName}</span>)}
+          {relationship.conversations.map((conversation) => <span key={conversation.id}>{conversation.threadName}<button type="button" onClick={() => onArchiveThread(conversation.threadName)}>Archive</button></span>)}
         </div>
         <div className="message-stack">
           {messages.length ? [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt)).map((message) => {
@@ -271,6 +275,7 @@ function DetailsDrawer({ node, instancesById, conversations, onClose }: { node: 
       <h2>{instance.name}</h2>
       <p className="muted">{instance.directory}</p>
       <code>{instance.id}</code>
+      {instance.online === false && <button type="button" className="danger-action" onClick={() => onDeleteInstance(instance.id)}>Delete Offline Instance</button>}
       <dl className="facts">
         <div><dt>Status</dt><dd>{instance.online === false ? "Offline historical node" : "Online"}</dd></div>
         <div><dt>Last Seen</dt><dd>{formatTime(instance.lastSeenAt)}</dd></div>
@@ -324,6 +329,34 @@ function Dashboard() {
     setMenu(null)
   }, [])
 
+  const archiveThread = useCallback(async (threadName: string) => {
+    if (!threadName || !window.confirm(`Archive thread ${threadName}? This removes the thread and its hub messages.`)) return
+    const response = await fetch(`/threads/${encodeURIComponent(threadName)}/archive`, { method: "POST" })
+    if (!response.ok) throw new Error(`Failed to archive thread: ${response.status}`)
+    setSelected(null)
+    setMenu(null)
+    await refresh()
+  }, [refresh])
+
+  const archiveNodeThread = useCallback((node: Node<GraphNodeData>) => {
+    if (node.data.kind !== "relationship") return
+    void archiveThread(node.data.relationship.conversations[0]?.threadName ?? "")
+  }, [archiveThread])
+
+  const deleteInstance = useCallback(async (instanceId: string) => {
+    if (!instanceId || !window.confirm(`Delete offline OpenCode instance ${instanceId}? This removes its hub record plus related threads and messages.`)) return
+    const response = await fetch(`/instances/${encodeURIComponent(instanceId)}`, { method: "DELETE" })
+    if (!response.ok) throw new Error(`Failed to delete instance: ${response.status}`)
+    setSelected(null)
+    setMenu(null)
+    await refresh()
+  }, [refresh])
+
+  const deleteNodeInstance = useCallback((node: Node<GraphNodeData>) => {
+    if (node.data.kind !== "instance") return
+    void deleteInstance(node.data.instance.id)
+  }, [deleteInstance])
+
   return (
     <div className="app">
       <header className="hud">
@@ -346,8 +379,8 @@ function Dashboard() {
         <Controls />
         <MiniMap pannable zoomable />
       </ReactFlow>
-      <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onInspect={(node) => { setSelected(node); setMenu(null) }} />
-      <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onClose={() => setSelected(null)} />
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onArchiveThread={archiveNodeThread} onDeleteInstance={deleteNodeInstance} onInspect={(node) => { setSelected(node); setMenu(null) }} />
+      <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onArchiveThread={archiveThread} onDeleteInstance={deleteInstance} onClose={() => setSelected(null)} />
     </div>
   )
 }

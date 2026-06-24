@@ -1,9 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { readFile } from "node:fs/promises"
 import type { AddressInfo } from "node:net"
-import { extname, join, normalize } from "node:path"
+import { dirname, extname, join, normalize } from "node:path"
+import { fileURLToPath } from "node:url"
 import { renderHubDashboard } from "./dashboard.ts"
 import type { AgentSymphonyHub } from "./types.ts"
+
+const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
 export interface HubHttpServerHandle {
   server: Server
@@ -44,10 +47,12 @@ async function route(hub: AgentSymphonyHub, request: IncomingMessage, response: 
   if (method === "GET" && url.pathname === "/monitor/snapshot") return writeJson(response, 200, await getMonitorSnapshot(hub))
   if (method === "GET" && url.pathname === "/instances") return writeJson(response, 200, await hub.listInstances())
   if (method === "POST" && url.pathname === "/instances") return writeJson(response, 200, await hub.registerInstance(await readJson(request)))
+  if (method === "DELETE" && parts[0] === "instances" && parts[1] && parts.length === 2) return writeJson(response, 200, await hub.deleteInstance(parts[1]))
   if (method === "POST" && parts[0] === "instances" && parts[2] === "heartbeat") return writeJson(response, 200, await hub.heartbeat(parts[1] ?? ""))
   if (method === "GET" && parts[0] === "instances" && parts[2] === "inbox") return writeJson(response, 200, await hub.pollMessages(parts[1] ?? ""))
   if (method === "GET" && parts[0] === "instances" && parts[2] === "conversations") return writeJson(response, 200, await hub.listConversationsForInstance(parts[1] ?? ""))
   if (method === "POST" && url.pathname === "/conversations") return writeJson(response, 200, await hub.createConversation(await readJson(request)))
+  if (method === "POST" && parts[0] === "threads" && parts[2] === "archive") return writeJson(response, 200, await hub.archiveThread(parts[1] ?? ""))
   if (method === "GET" && parts[0] === "conversations" && parts[2] === "messages") return writeJson(response, 200, await hub.listMessagesForConversation(parts[1] ?? "", Number(url.searchParams.get("limit") ?? "20")))
   if (method === "GET" && parts[0] === "conversations" && parts[1]) return writeJson(response, 200, await hub.getConversation(parts[1]))
   if (method === "POST" && url.pathname === "/messages") return writeJson(response, 200, await hub.sendMessage(await readJson(request)))
@@ -78,23 +83,28 @@ async function getMonitorSnapshot(hub: AgentSymphonyHub) {
 }
 
 async function serveDashboardIndex(response: ServerResponse): Promise<void> {
-  try {
-    writeHtml(response, 200, await readFile(join(process.cwd(), "dist", "dashboard", "index.html"), "utf8"))
-  } catch {
-    writeHtml(response, 200, renderHubDashboard())
-  }
+  const index = await readDashboardFile("index.html", "utf8")
+  writeHtml(response, 200, typeof index === "string" ? index : renderHubDashboard())
 }
 
 async function serveDashboardAsset(pathname: string, response: ServerResponse): Promise<void> {
   const relative = normalize(pathname.replace(/^\/+/, ""))
   if (relative.startsWith("..")) return writeJson(response, 400, { error: "Invalid asset path" })
-  try {
-    const body = await readFile(join(process.cwd(), "dist", "dashboard", relative))
-    response.writeHead(200, { "content-type": contentType(relative) })
-    response.end(body)
-  } catch {
-    writeJson(response, 404, { error: `Unknown asset: ${pathname}` })
+  const body = await readDashboardFile(relative)
+  if (!body) return writeJson(response, 404, { error: `Unknown asset: ${pathname}` })
+  response.writeHead(200, { "content-type": contentType(relative) })
+  response.end(body)
+}
+
+async function readDashboardFile(relative: string, encoding?: BufferEncoding): Promise<Buffer | string | undefined> {
+  for (const root of [packageRoot, process.cwd()]) {
+    try {
+      return encoding ? readFile(join(root, "dist", "dashboard", relative), encoding) : readFile(join(root, "dist", "dashboard", relative))
+    } catch {
+      // Try the next root, then fall back to the built-in dashboard.
+    }
   }
+  return undefined
 }
 
 function contentType(pathname: string): string {

@@ -55,6 +55,30 @@ describe("receiver launcher", () => {
     expect(launched.instance).toMatchObject({ id: "receiver" })
   })
 
+  it("uses a default launch prompt that waits for injected messages instead of polling threads", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    let prompt = ""
+
+    const launched = await launchHubReceiver({
+      hub,
+      directory: "/repo",
+      timeoutMs: 1000,
+      pollIntervalMs: 5,
+      beforeSessions: [],
+      listSessions: async () => [],
+      spawnReceiver(_directory, _title, value) {
+        prompt = value
+        setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
+        return { pid: 123, unref() {} }
+      },
+    })
+
+    expect(launched.prompt).toBe(prompt)
+    expect(prompt).toContain("Do not list, read, or poll AgentSymphony threads")
+    expect(prompt).toContain("Wait for injected AgentSymphony messages")
+    expect(prompt).not.toContain("agentsymphony_hub_read_thread")
+  })
+
   it("resumes an existing receiver session by stable session identity", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const identityFileWrites: Array<{ directory: string; sessionId: string }> = []
@@ -135,5 +159,29 @@ describe("receiver launcher", () => {
     expect(resumed.pid).toBe(456)
     expect(resumed.reused).toBe(false)
     expect(resumed.instance).toMatchObject({ id: "receiver" })
+  })
+
+  it("uses a default resume prompt that waits for injected messages instead of polling threads", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    let prompt = ""
+
+    const resumed = await resumeHubReceiver({
+      hub,
+      directory: "/repo",
+      sessionId: "ses_receiver",
+      timeoutMs: 1000,
+      pollIntervalMs: 5,
+      identityStore: { async load(directory: string) { return { id: "receiver", name: "receiver", directory } } },
+      spawnReceiver(_directory, _title, _sessionId, value) {
+        prompt = value
+        setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
+        return { pid: 456, unref() {} }
+      },
+    })
+
+    expect(resumed.prompt).toBe(prompt)
+    expect(prompt).toContain("Do not list, read, or poll AgentSymphony threads")
+    expect(prompt).toContain("Wait for injected AgentSymphony messages")
+    expect(prompt).not.toContain("agentsymphony_hub_read_thread")
   })
 })

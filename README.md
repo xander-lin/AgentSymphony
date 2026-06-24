@@ -36,6 +36,7 @@ Use the product as a team workflow, not as a low-level routing system: launch te
 - `agentsymphony_hub_send_thread`: sends to a visible thread by thread name, resolving routing automatically. Message delivery may set only `variant`; it does not change the receiver model.
 - `agentsymphony_hub_reply`: replies to the latest inbound hub-routed thread, or a named thread. Replies may set only `variant`; they do not change the receiver model.
 - `agentsymphony_hub_list_threads` and `agentsymphony_hub_read_thread`: inspect visible hub threads and recent message history on demand. These tools are not for polling or receiving new messages; normal hub messages are injected automatically into the target session.
+- `agentsymphony_hub_delete_teammate`: deletes a stale offline teammate visible to the current session. Related hub threads and messages are removed automatically; live teammates and unrelated instances are rejected.
 
 Tool results use a consistent JSON envelope with `ok`, `type`, `summary`, and `data` fields so parent agents can quickly decide what happened before inspecting details.
 

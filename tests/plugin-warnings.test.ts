@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { offlineReceiverWarnings } from "../src/plugin.ts"
 
 describe("offlineReceiverWarnings", () => {
-  it("asks whether offline receivers should be resumed or cleaned up", async () => {
+  it("asks whether offline receivers should be resumed or deleted", async () => {
     const warnings = await offlineReceiverWarnings(
       {
         async getMonitorSnapshot() {
@@ -31,7 +31,7 @@ describe("offlineReceiverWarnings", () => {
             targetInstanceId: "child",
             choices: expect.objectContaining({
               resume: expect.objectContaining({ tool: "agentsymphony_hub_resume_receiver" }),
-              cleanup: expect.objectContaining({ tool: "agentsymphony_hub_archive_thread", thread: "worker" }),
+              delete: expect.objectContaining({ tool: "agentsymphony_hub_delete_teammate", targetInstanceId: "child" }),
             }),
           }),
         ],

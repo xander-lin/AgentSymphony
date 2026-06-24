@@ -18,7 +18,7 @@ const TEAM_SYSTEM_GUIDANCE = `Team workflow guidance:
 - Use a teammate for independent research, focused implementation, review, verification, or competing approaches. Keep work local if the task is tiny, tightly sequential, or requires one continuous edit.
 - Start a teammate with agentsymphony_hub_launch_receiver. You do not need a conversation description; use threadName only when a stable short name helps later coordination.
 - Send follow-up work with agentsymphony_hub_send_thread. Reply to inbound teammate messages with agentsymphony_hub_reply. Do not poll list/read tools for delivery; teammate messages are injected automatically.
-- Use agentsymphony_hub_system_status when deciding whether to resume or clean up offline teammates. Resume useful offline teammates with agentsymphony_hub_resume_receiver.
+- Use agentsymphony_hub_system_status when deciding whether to resume or delete offline teammates. Resume useful teammates with agentsymphony_hub_resume_receiver; delete stale offline teammates with agentsymphony_hub_delete_teammate.
 - Model selection: use cheaper/faster models for straightforward lookup, summarization, formatting, and narrow checks; use stronger models for architecture, ambiguous debugging, multi-file edits, or high-stakes review. Launch may set model for a new teammate. Later sends/replies may set variant for that prompt only and do not change the teammate model.
 - Keep delegation prompts scoped and outcome-oriented: give the teammate the goal, constraints, files or areas to inspect, expected output, and whether to edit or only report.
 - Summarize teammate results before acting on them; do not blindly merge conflicting conclusions.`
@@ -152,7 +152,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
               readThreadHistory: "agentsymphony_hub_read_thread",
               launchReceiver: "agentsymphony_hub_launch_receiver",
               resumeReceiver: "agentsymphony_hub_resume_receiver",
-              cleanupThread: "agentsymphony_hub_archive_thread",
+              deleteOfflineTeammate: "agentsymphony_hub_delete_teammate",
             },
           } })
         },
@@ -327,17 +327,15 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           } })
         },
       }),
-      agentsymphony_hub_archive_thread: tool({
-        description: "Team cleanup: archive a visible stale thread online. Removes the thread and its hub messages; also removes offline teammate records no longer used by any thread.",
+      agentsymphony_hub_delete_teammate: tool({
+        description: "Team cleanup: delete a stale offline teammate owned by this session. Related threads and hub messages are removed automatically. Ask the user before calling this tool.",
         args: {
-          thread: tool.schema.string().describe("Visible stale thread name to archive. Ask the user before calling this tool."),
+          targetInstanceId: tool.schema.string().describe("Offline teammate instance id shown in system_status or warnings. Must be connected to this session."),
         },
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
-          const conversation = await findVisibleConversationByThread(hub, identity.id, args.thread)
-          if (!conversation) throw new Error(`Cannot archive thread outside this teammate set: ${args.thread}`)
-          const result = await hub.archiveThread(args.thread)
-          return respondHub({ hub, directory, identity, type: "hub.thread.archived", summary: result.conversation ? `Archived thread ${args.thread}.` : `Thread ${args.thread} was not found.`, data: result })
+          const result = await deleteVisibleTeammate(hub, identity.id, args.targetInstanceId)
+          return respondHub({ hub, directory, identity, type: "hub.teammate.deleted", summary: result.instance ? `Deleted offline teammate ${args.targetInstanceId} and related threads.` : `Teammate ${args.targetInstanceId} was not found.`, data: result })
         },
       }),
       agentsymphony_create_conversation: tool({
@@ -472,9 +470,9 @@ export async function offlineReceiverWarnings(hub: Pick<HttpAgentSymphonyHubClie
   if (offlineThreads.length === 0) return []
   return [{
     type: "hub.offline_receivers",
-    summary: "Some receiver instances connected to this node are offline. Decide whether each receiver is stale and should be cleaned up, or still needed and should be resumed.",
+    summary: "Some receiver instances connected to this node are offline. Decide whether each receiver is stale and should be deleted, or still needed and should be resumed.",
     decisionRequired: true,
-    question: "Are these offline receivers outdated and safe to delete/archive, or should they be resumed?",
+    question: "Are these offline receivers outdated and safe to delete, or should they be resumed?",
     offlineReceivers: await Promise.all(offlineThreads.map(async ({ conversation, targetInstanceId, target }) => ({
       threadName: conversation.threadName,
       title: conversation.title,
@@ -484,7 +482,7 @@ export async function offlineReceiverWarnings(hub: Pick<HttpAgentSymphonyHubClie
       lastSeenAt: target?.lastSeenAt,
       choices: {
         resume: { tool: "agentsymphony_hub_resume_receiver", sessionId: await findSessionIdForInstance(directory, targetInstanceId) },
-        cleanup: { tool: "agentsymphony_hub_archive_thread", thread: conversation.threadName, note: "Ask the user before archiving stale teammate history." },
+        delete: { tool: "agentsymphony_hub_delete_teammate", targetInstanceId, note: "Ask the user before deleting a stale offline teammate. Related threads and messages are removed automatically." },
       },
     }))),
   }]
@@ -522,6 +520,18 @@ async function sendHubMessageOrOfflineNotice(input: {
 async function findVisibleConversationByThread(hub: HttpAgentSymphonyHubClient, instanceId: string, threadName: string): Promise<HubConversation | undefined> {
   const conversations = await hub.listConversationsForInstance(instanceId)
   return conversations.find((candidate) => candidate.threadName === threadName)
+}
+
+export async function deleteVisibleTeammate(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance" | "deleteInstance">, instanceId: string, targetInstanceId: string) {
+  const teammate = await findVisibleTeammateByInstanceId(hub, instanceId, targetInstanceId)
+  if (!teammate) throw new Error(`Cannot delete teammate outside this session's visible teammate set: ${targetInstanceId}`)
+  return hub.deleteInstance(targetInstanceId)
+}
+
+async function findVisibleTeammateByInstanceId(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance">, instanceId: string, targetInstanceId: string): Promise<HubConversation | undefined> {
+  if (instanceId === targetInstanceId) return undefined
+  const conversations = await hub.listConversationsForInstance(instanceId)
+  return conversations.find((conversation) => conversation.parentInstanceId === targetInstanceId || conversation.targetInstanceId === targetInstanceId)
 }
 
 function describeConversation(conversation: HubConversation): Pick<HubConversation, "id" | "threadName" | "title" | "parentInstanceId" | "targetInstanceId"> {

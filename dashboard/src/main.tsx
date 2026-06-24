@@ -208,13 +208,12 @@ async function layoutGraph(nodes: Node<GraphNodeData>[], edges: Edge[]): Promise
   return nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }))
 }
 
-function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread, onArchiveThread, onDeleteInstance }: {
+function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread, onDeleteInstance }: {
   menu: { x: number; y: number; node: Node<GraphNodeData> } | null
   onClose: () => void
   onInspect: (node: Node<GraphNodeData>) => void
   onFocusNode: (nodeId: string) => void
   onCopyThread: (node: Node<GraphNodeData>) => void
-  onArchiveThread: (node: Node<GraphNodeData>) => void
   onDeleteInstance: (node: Node<GraphNodeData>) => void
 }) {
   if (!menu) return null
@@ -228,12 +227,11 @@ function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread, onAr
       {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.createdByInstanceId}`)}>Focus Creator</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.targetInstanceId}`)}>Focus Target</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onInspect(menu.node)}>View Messages</button>}
-      {data.kind === "relationship" && <button type="button" className="danger" onClick={() => onArchiveThread(menu.node)}>Archive Latest Thread</button>}
     </div>
   )
 }
 
-function DetailsDrawer({ node, instancesById, conversations, onClose, onArchiveThread, onDeleteInstance }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; conversations: HubConversation[]; onClose: () => void; onArchiveThread: (threadName: string) => void; onDeleteInstance: (instanceId: string) => void }) {
+function DetailsDrawer({ node, instancesById, conversations, onClose, onDeleteInstance }: { node: Node<GraphNodeData> | null; instancesById: Map<string, HubInstance>; conversations: HubConversation[]; onClose: () => void; onDeleteInstance: (instanceId: string) => void }) {
   if (!node) return null
   if (node.data.kind === "relationship") {
     const { relationship, messages } = node.data
@@ -248,7 +246,7 @@ function DetailsDrawer({ node, instancesById, conversations, onClose, onArchiveT
           <div><dt>Updated</dt><dd>{formatTime(relationship.updatedAt)}</dd></div>
         </dl>
         <div className="thread-list">
-          {relationship.conversations.map((conversation) => <span key={conversation.id}>{conversation.threadName}<button type="button" onClick={() => onArchiveThread(conversation.threadName)}>Archive</button></span>)}
+          {relationship.conversations.map((conversation) => <span key={conversation.id}>{conversation.threadName}</span>)}
         </div>
         <div className="message-stack">
           {messages.length ? [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt)).map((message) => {
@@ -329,20 +327,6 @@ function Dashboard() {
     setMenu(null)
   }, [])
 
-  const archiveThread = useCallback(async (threadName: string) => {
-    if (!threadName || !window.confirm(`Archive thread ${threadName}? This removes the thread and its hub messages.`)) return
-    const response = await fetch(`/threads/${encodeURIComponent(threadName)}/archive`, { method: "POST" })
-    if (!response.ok) throw new Error(`Failed to archive thread: ${response.status}`)
-    setSelected(null)
-    setMenu(null)
-    await refresh()
-  }, [refresh])
-
-  const archiveNodeThread = useCallback((node: Node<GraphNodeData>) => {
-    if (node.data.kind !== "relationship") return
-    void archiveThread(node.data.relationship.conversations[0]?.threadName ?? "")
-  }, [archiveThread])
-
   const deleteInstance = useCallback(async (instanceId: string) => {
     if (!instanceId || !window.confirm(`Delete offline OpenCode instance ${instanceId}? This removes its hub record plus related threads and messages.`)) return
     const response = await fetch(`/instances/${encodeURIComponent(instanceId)}`, { method: "DELETE" })
@@ -379,8 +363,8 @@ function Dashboard() {
         <Controls />
         <MiniMap pannable zoomable />
       </ReactFlow>
-      <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onArchiveThread={archiveNodeThread} onDeleteInstance={deleteNodeInstance} onInspect={(node) => { setSelected(node); setMenu(null) }} />
-      <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onArchiveThread={archiveThread} onDeleteInstance={deleteInstance} onClose={() => setSelected(null)} />
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onDeleteInstance={deleteNodeInstance} onInspect={(node) => { setSelected(node); setMenu(null) }} />
+      <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onDeleteInstance={deleteInstance} onClose={() => setSelected(null)} />
     </div>
   )
 }

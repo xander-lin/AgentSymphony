@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import { MemoryAgentSymphonyHub } from "../src/hub/memory.ts"
 import { launchHubReceiver, resumeHubReceiver } from "../src/hub/receiver-launcher.ts"
+import { MemoryInstanceIdentityStore } from "../src/instance/memory.ts"
+
+const receiverIdentity = { id: "receiver", name: "receiver", directory: "/repo" }
 
 describe("receiver launcher", () => {
   it("waits for a newly registered receiver instance", async () => {
@@ -112,7 +115,6 @@ describe("receiver launcher", () => {
 
   it("resumes an existing receiver session by stable session identity", async () => {
     const hub = new MemoryAgentSymphonyHub()
-    const identityFileWrites: Array<{ directory: string; sessionId: string }> = []
     let resumeOptions: unknown
 
     await hub.registerInstance({ id: "existing", name: "existing", directory: "/repo" })
@@ -124,13 +126,7 @@ describe("receiver launcher", () => {
       variant: "minimal",
       timeoutMs: 1000,
       pollIntervalMs: 5,
-      identityStore: {
-        async load(directory: string, sessionId?: string) {
-          if (!sessionId) throw new Error("sessionId required")
-          identityFileWrites.push({ directory, sessionId })
-          return { id: "receiver", name: "receiver", directory }
-        },
-      },
+      identityStore: new MemoryInstanceIdentityStore(receiverIdentity),
       spawnReceiver(_directory, _title, _sessionId, _prompt, options) {
         resumeOptions = options
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
@@ -138,12 +134,11 @@ describe("receiver launcher", () => {
       },
     })
 
-    expect(identityFileWrites).toEqual([{ directory: "/repo", sessionId: "ses_receiver" }])
     expect(resumed.pid).toBe(456)
     expect(resumed.sessionId).toBe("ses_receiver")
     expect(resumed.variant).toBe("minimal")
     expect(resumeOptions).toEqual({ variant: "minimal" })
-    expect(resumed.instance).toMatchObject({ id: "receiver" })
+    expect(resumed.instance).toMatchObject(receiverIdentity)
   })
 
   it("reuses a live process when process id and session id match", async () => {
@@ -157,7 +152,7 @@ describe("receiver launcher", () => {
       processId: 789,
       timeoutMs: 1000,
       pollIntervalMs: 5,
-      identityStore: { async load(directory: string) { return { id: "receiver", name: "receiver", directory } } },
+      identityStore: new MemoryInstanceIdentityStore(receiverIdentity),
       isSessionProcess: async (processId, sessionId) => processId === 789 && sessionId === "ses_receiver",
       spawnReceiver() {
         throw new Error("should not spawn")
@@ -179,7 +174,7 @@ describe("receiver launcher", () => {
       processId: 789,
       timeoutMs: 1000,
       pollIntervalMs: 5,
-      identityStore: { async load(directory: string) { return { id: "receiver", name: "receiver", directory } } },
+      identityStore: new MemoryInstanceIdentityStore(receiverIdentity),
       isSessionProcess: async () => false,
       spawnReceiver() {
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
@@ -202,7 +197,7 @@ describe("receiver launcher", () => {
       sessionId: "ses_receiver",
       timeoutMs: 1000,
       pollIntervalMs: 5,
-      identityStore: { async load(directory: string) { return { id: "receiver", name: "receiver", directory } } },
+      identityStore: new MemoryInstanceIdentityStore(receiverIdentity),
       spawnReceiver(_directory, _title, _sessionId, value) {
         prompt = value
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)

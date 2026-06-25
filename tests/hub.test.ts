@@ -168,4 +168,28 @@ describe("MemoryAgentSymphonyHub", () => {
 
     await expect(hub.deleteInstance(instance.id)).rejects.toThrow(/Cannot delete live/)
   })
+
+  it("allows deleting instance when callerId is a conversation participant", async () => {
+    let now = new Date("2026-01-01T00:00:00.000Z")
+    const hub = new MemoryAgentSymphonyHub({ instanceTtlMs: 1000, now: () => now })
+    const a = await hub.registerInstance({ name: "A", directory: "/repo" })
+    const b = await hub.registerInstance({ name: "B", directory: "/repo" })
+    const c = await hub.registerInstance({ name: "C", directory: "/repo" })
+    await hub.createConversation({ parentInstanceId: a.id, targetInstanceId: b.id, title: "A↔B" })
+    now = new Date("2026-01-01T00:00:02.000Z")
+
+    await expect(hub.deleteInstance(b.id, a.id)).resolves.toMatchObject({ instance: expect.objectContaining({ id: b.id }) })
+  })
+
+  it("rejects deleting instance when callerId is not a participant", async () => {
+    let now = new Date("2026-01-01T00:00:00.000Z")
+    const hub = new MemoryAgentSymphonyHub({ instanceTtlMs: 1000, now: () => now })
+    const a = await hub.registerInstance({ name: "A", directory: "/repo" })
+    const b = await hub.registerInstance({ name: "B", directory: "/repo" })
+    const c = await hub.registerInstance({ name: "C", directory: "/repo" })
+    await hub.createConversation({ parentInstanceId: a.id, targetInstanceId: b.id, title: "A↔B" })
+    now = new Date("2026-01-01T00:00:02.000Z")
+
+    await expect(hub.deleteInstance(b.id, c.id)).rejects.toThrow(/not a conversation participant/)
+  })
 })

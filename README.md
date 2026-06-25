@@ -19,11 +19,11 @@ Use the product as a team workflow, not as a low-level routing system: launch te
 
 | Tool | Description |
 |------|-------------|
-| `agentsymphony_hub_launch_receiver` | Start a new teammate and create its thread. Refused if a live teammate already exists. |
+| `agentsymphony_hub_launch_receiver` | Start a new teammate in a TUI window. Creates the communication thread automatically. |
 | `agentsymphony_hub_resume_receiver` | Kill old processes and restart a teammate by session id. Thread history preserved. |
-| `agentsymphony_hub_delete_teammate` | Kill associated processes and delete an offline teammate. |
+| `agentsymphony_hub_delete_teammate` | Kill associated processes (local) or remove hub record (remote), then clean up threads and messages. |
 | `agentsymphony_hub_send_thread` | Send work to an existing thread by name. |
-| `agentsymphony_hub_reply` | Reply to the latest or named inbound thread. |
+| `agentsymphony_hub_reply` | Reply to the latest or named inbound thread. Must use this tool — plain text reaches the teammate's terminal, not the hub. |
 | `agentsymphony_hub_system_status` | Inspect live teammates, threads, and offline warnings. |
 | `agentsymphony_hub_list_threads` / `agentsymphony_hub_read_thread` | Inspect threads and history on demand. |
 
@@ -126,6 +126,10 @@ cat > ~/.config/opencode/agentsymphony/config.json << 'EOF'
 { "hubUrl": "http://0.0.0.0:4777" }
 EOF
 
+# Configure hub to listen on all interfaces for remote access
+systemctl --user edit agentsymphony-hub
+# Add: Environment=AGENTSYMPHONY_HUB_HOST=0.0.0.0
+
 # Enable and start hub daemon
 systemctl --user enable --now agentsymphony-hub
 ```
@@ -134,14 +138,26 @@ Ensure firewall allows inbound TCP to port 4777 from teammate machines. For prod
 
 ### Teammate Machine Setup
 
-Each teammate machine configures its plugin to point to the hub:
+Build and package the plugin on the hub machine, then install on each teammate machine:
 
-```json
-// ~/.config/opencode/agentsymphony/config.json
-{ "hubUrl": "http://<hub-server-ip>:4777" }
+```sh
+# On hub machine
+npm run build
+npm pack                              # produces agentsymphony-0.1.0.tgz
+scp agentsymphony-0.1.0.tgz user@machine-ip:~/
+
+# On teammate machine
+npm install -g --prefix ~/.opencode ./agentsymphony-0.1.0.tgz
+
+# Configure hub URL
+mkdir -p ~/.config/opencode/agentsymphony
+echo '{"hubUrl":"http://<hub-server-ip>:4777"}' > ~/.config/opencode/agentsymphony/config.json
+
+# Deploy team thinking flow
+scp user@hub-machine:.config/opencode/AGENTS.md ~/.config/opencode/AGENTS.md
 ```
 
-Start OpenCode with the plugin loaded. The plugin connects to the hub, registers the instance, and becomes visible in the dashboard.
+Add the plugin path to `~/.config/opencode/opencode.json`. Start OpenCode — the plugin connects to the hub, registers the instance, and becomes visible in the dashboard.
 
 ### Verification
 
@@ -156,6 +172,17 @@ opencode --prompt "Connect to hub at $(cat ~/.config/opencode/agentsymphony/conf
 ```
 
 Open the hub dashboard at `http://<hub-server-ip>:4777/` to see connected instances and drag between handles to create conversations.
+
+## Thinking Flow (AGENTS.md)
+
+The project includes a `~/.config/opencode/AGENTS.md` that teaches OpenCode how to behave in team mode:
+
+- **Identify sender**: Distinguish between real user messages and team lead `<<<AGENTSYMPHONY:...>>>` messages
+- **Use the right tool**: Team lead messages must be replied to with `agentsymphony_hub_reply`, not plain text
+- **Assess clarity**: Before acting, check if the request is specific enough; ask if unclear
+- **Keep replies scoped**: State what was done, what was found, and what's needed next
+
+Deploy this file to teammate machines when setting up multi-machine collaboration.
 
 ## Architecture Principles
 

@@ -13,7 +13,7 @@ body { background: #faf8ff; color: #292524; font-family: Inter, ui-sans-serif, s
 .react-flow__handle.node-handle:hover { cursor: crosshair; }
 .react-flow__handle.source-handle { right: -4px; background: linear-gradient(135deg, #84cc16, #65a30d); clip-path: polygon(0 0, 100% 15%, 100% 85%, 0 100%); border-left: none; }
 .react-flow__handle.target-handle { left: -4px; background: linear-gradient(135deg, #65a30d, #84cc16); clip-path: polygon(0 15%, 100% 0, 100% 100%, 0 85%); border-right: none; }
-.node-card { box-sizing: border-box; border: 1px solid rgba(28, 25, 23, .08); border-radius: 22px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); background: radial-gradient(circle, rgba(255, 255, 255, .85) 60%, rgba(240, 253, 224, .15) 100%); box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 8px 32px rgba(0,0,0,.04); color: #292524; padding: 16px; overflow: hidden; }
+.node-card { box-sizing: border-box; border: 1px solid rgba(255, 255, 255, .5); border-radius: 22px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: rgba(255, 255, 255, .65); box-shadow: 0 4px 24px rgba(0,0,0,.04), inset 0 1px 0 rgba(255,255,255,.8); color: #292524; padding: 16px; overflow: hidden; }
 .instance-card { width: 280px; min-height: 118px; }
 .instance-card.online { border-color: rgba(28, 25, 23, .7); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 20px rgba(132, 204, 22, .15); }
 .instance-card.offline { border-color: rgba(168, 162, 158, .2); opacity: .55; filter: grayscale(.8); }
@@ -36,13 +36,13 @@ code { color: #65a30d; background: rgba(236, 252, 203, .5); padding: 2px 7px; bo
 .creator-edge .react-flow__edge-path { stroke: #78716c; stroke-width: 2.5; }
 .target-edge .react-flow__edge-path { stroke: #a78bfa; stroke-width: 2.5; stroke-dasharray: 8 6; }
 .react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 10 8; animation-duration: .7s; }
-.context-menu { position: fixed; z-index: 30; min-width: 190px; border: 1px solid rgba(28, 25, 23, .15); background: rgba(255, 255, 255, .97); border-radius: 16px; padding: 6px; box-shadow: 0 4px 24px rgba(0,0,0,.08); }
+.context-menu { position: fixed; z-index: 30; min-width: 190px; border: 1px solid rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 16px; padding: 6px; box-shadow: 0 8px 32px rgba(0,0,0,.06); }
 .context-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: #57534e; padding: 9px 10px; border-radius: 10px; cursor: crosshair; font-size: 13px; transition: all .1s; }
 .context-menu button:hover { background: rgba(236, 252, 203, .5); color: #292524; }
 .context-menu button.danger { color: #ef4444; }
 .context-menu button.danger:hover { background: rgba(254, 226, 226, .5); }
 .context-menu button + button { margin-top: 2px; }
-.drawer { position: fixed; right: 18px; top: 86px; bottom: 18px; z-index: 20; width: min(420px, calc(100vw - 36px)); border: 1px solid rgba(28, 25, 23, .12); background: rgba(255, 255, 255, .97); border-radius: 22px; padding: 18px; overflow: auto; box-shadow: 0 4px 24px rgba(0,0,0,.06); }
+.drawer { position: fixed; right: 18px; top: 86px; bottom: 18px; z-index: 20; width: min(420px, calc(100vw - 36px)); border: 1px solid rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 22px; padding: 18px; overflow: auto; box-shadow: 0 8px 40px rgba(0,0,0,.06); }
 .drawer h2 { margin: 0 0 6px; letter-spacing: -0.03em; font-weight: 600; color: #292524;  text-shadow: 0.5px 0.5px 0 #faf9f7, -0.5px -0.5px 0 #faf9f7, 0.5px -0.5px 0 #faf9f7, -0.5px 0.5px 0 #faf9f7; }
 .drawer h3 { margin: 20px 0 0; letter-spacing: -0.02em; color: #292524; }
 .close { float: right; border: 1px solid rgba(168, 162, 158, .2); background: rgba(250, 250, 249, .8); color: #78716c; border-radius: 999px; padding: 6px 10px; cursor: crosshair; font-size: 12px; transition: all .15s; }

@@ -11,6 +11,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  type Connection,
   type Edge,
   type Node,
   type NodeProps,
@@ -341,6 +342,22 @@ function Dashboard() {
     void deleteInstance(node.data.instance.id)
   }, [deleteInstance])
 
+  const onConnect = useCallback(async (params: { source: string; target: string }) => {
+    const sourceId = params.source.startsWith("instance:") ? params.source.slice(9) : null
+    const targetId = params.target.startsWith("instance:") ? params.target.slice(9) : null
+    if (!sourceId || !targetId || sourceId === targetId) return
+    try {
+      await fetch("/conversations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parentInstanceId: sourceId, targetInstanceId: targetId, title: `${short(sourceId)} ↔ ${short(targetId)}` }),
+      })
+      await refresh()
+    } catch {
+      // ignore connection errors
+    }
+  }, [refresh])
+
   return (
     <div className="app">
       <header className="hud">
@@ -348,7 +365,7 @@ function Dashboard() {
         <div className="stats"><span>Online <b>{snapshot.instances.filter((instance) => instance.online !== false).length}</b></span><span>Known <b>{snapshot.instances.length}</b></span><span>Threads <b>{snapshot.conversations.length}</b></span><span>Messages <b>{snapshot.messages.length}</b></span><span>Queued <b>{queued}</b></span></div>
       </header>
       <div className="connect-bar">
-        <span>Remote teammates: configure <code>hubUrl</code> to <code>{window.location.origin}</code> in <code>~/.config/opencode/agentsymphony/config.json</code></span>
+        <span>Remote: set <code>hubUrl</code> to <code>{window.location.origin}</code> in <code>config.json</code>. Drag between instance handles to create conversations.</span>
       </div>
       <ReactFlow
         nodes={nodes}
@@ -356,6 +373,8 @@ function Dashboard() {
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        connectionLineStyle={{ stroke: "#38bdf8", strokeWidth: 2 }}
         onNodeClick={(_, node) => setSelected(node)}
         onNodeContextMenu={(event, node) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, node }) }}
         fitView

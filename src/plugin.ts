@@ -177,15 +177,6 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
           return enqueueLaunch(async () => {
-            const existingConversations = await hub.listConversationsForInstance(currentIdentity.id)
-            const liveInstances = await hub.listInstances()
-            const liveTeammateIds = new Set(liveInstances.map((i) => i.id))
-            for (const conv of existingConversations) {
-              const mateId = conv.parentInstanceId === currentIdentity.id ? conv.targetInstanceId : conv.parentInstanceId
-              if (liveTeammateIds.has(mateId)) {
-                throw new Error(`Teammate ${mateId} is already live on thread ${conv.threadName}. Delete or resume it before launching a new one.`)
-              }
-            }
             const result = await launchHubReceiver({
               hub,
               directory,

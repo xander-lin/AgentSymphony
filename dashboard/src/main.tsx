@@ -420,8 +420,8 @@ function Dashboard() {
         maxZoom={2.5}
       >
         <Background />
-        <Controls />
-        <MiniMap pannable zoomable />
+        <Controls showInteractive={false} style={{ "backgroundColor": "rgba(13,21,36,.96)", "border": "1px solid #2a3852", "borderRadius": "8px", "boxShadow": "0 4px 12px rgba(0,0,0,.3)" }} />
+        <Background color="#1e293b" gap={32} />
       </ReactFlow>
       <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onDeleteInstance={deleteNodeInstance} onDeleteConnections={deleteConnections} onInspect={(node) => { setSelected(node); setMenu(null) }} />
       <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onDeleteInstance={deleteInstance} onClose={() => setSelected(null)} />

@@ -7,7 +7,8 @@ body { background: #fdfcf8; color: #292524; font-family: Inter, ui-sans-serif, s
 .stats { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-content: flex-start; }
 .stats span { border: 1px solid rgba(168, 162, 158, .2); background: rgba(255, 255, 255, .85); color: #78716c; border-radius: 999px; padding: 6px 11px; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
 .stats b { color: #292524; font-weight: 600; }
-.react-flow { background: radial-gradient(ellipse at 50% 0%, rgba(254, 249, 195, .4) 0%, transparent 50%), radial-gradient(ellipse at 20% 80%, rgba(236, 252, 203, .3) 0%, transparent 40%), #fdfcf8; }
+@keyframes glowShift { 0% { background-position: 0% 0%, 0% 0%; } 33% { background-position: 40% 10%, 70% 80%; } 66% { background-position: 60% 20%, 30% 40%; } 100% { background-position: 0% 0%, 0% 0%; } }
+.react-flow { background: radial-gradient(ellipse at 30% 5%, rgba(254, 249, 195, .35) 0%, transparent 45%), radial-gradient(ellipse at 70% 80%, rgba(236, 252, 203, .25) 0%, transparent 38%), #fdfcf8; background-size: 120% 120%, 120% 120%; animation: glowShift 10s ease-in-out infinite; }
 .react-flow__node { border-radius: 22px; }
 .react-flow__handle.node-handle { width: 12px; height: 12px; border: 2px solid #fff; background: #a3e635; box-shadow: 0 0 0 3px rgba(163, 230, 53, .2), 0 0 14px rgba(163, 230, 53, .25); opacity: 1; transition: all .2s; }
 .react-flow__handle.node-handle:hover { box-shadow: 0 0 0 4px rgba(163, 230, 53, .3), 0 0 24px rgba(163, 230, 53, .35); transform: scale(1.15); }

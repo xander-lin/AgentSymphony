@@ -2,11 +2,11 @@ html, body, #root { width: 100%; height: 100%; margin: 0; }
 body { background: #fdfcf8; color: #292524; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .app { width: 100%; height: 100%; position: relative; }
 .hud { position: absolute; left: 24px; top: 20px; right: 24px; z-index: 10; display: flex; justify-content: space-between; gap: 18px; pointer-events: none; }
-.hud h1 { margin: 0; font-size: 28px; letter-spacing: -0.04em; font-weight: 500; color: #44403c; }
-.hud p { margin: 4px 0 0; color: #a8a29e; font-size: 13px; }
+.hud h1 { margin: 0; font-size: 28px; letter-spacing: -0.04em; font-weight: 600; -webkit-text-stroke: 0.5px #faf9f7; -webkit-text-fill-color: #292524; }
+.hud p { margin: 4px 0 0; color: #78716c; font-size: 13px; }
 .stats { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-content: flex-start; }
 .stats span { border: 1px solid rgba(168, 162, 158, .2); background: rgba(255, 255, 255, .85); color: #78716c; border-radius: 999px; padding: 6px 11px; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
-.stats b { color: #292524; font-weight: 600; }
+.stats b { color: #292524; font-weight: 600; -webkit-text-stroke: 0.3px #faf9f7; }
 .react-flow { background: #fdfcf8; }
 .react-flow__node { border-radius: 22px; }
 .react-flow__handle.node-handle { width: 8px; height: 66px; border: 1.5px solid rgba(28, 25, 23, .4); background: #84cc16; opacity: 1; transition: none; border-radius: 3px; box-shadow: 0 0 0 2px rgba(132, 204, 22, .1), 0 0 8px rgba(132, 204, 22, .12); }
@@ -19,10 +19,10 @@ body { background: #fdfcf8; color: #292524; font-family: Inter, ui-sans-serif, s
 .instance-card.offline { border-color: rgba(168, 162, 158, .2); opacity: .55; filter: grayscale(.8); }
 .thread-card { width: 340px; min-height: 168px; border-color: rgba(28, 25, 23, .5); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 12px rgba(132, 204, 22, .1); }
 .eyebrow { color: #a8a29e; font-size: 10px; text-transform: uppercase; letter-spacing: .15em; margin-bottom: 8px; }
-.node-title { font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; color: #292524; }
+.node-title { font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; color: #292524; -webkit-text-stroke: 0.4px #faf9f7; -webkit-text-fill-color: #292524; }
 .node-meta { margin-top: 10px; color: #a8a29e; font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 code { color: #65a30d; background: rgba(236, 252, 203, .5); padding: 2px 7px; border-radius: 8px; font-size: 12px; }
-.thread-name { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: #4d7c0f; }
+.thread-name { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: #3f6212; -webkit-text-stroke: 0.5px #faf9f7; -webkit-text-fill-color: #3f6212; }
 .thread-title { margin-top: 5px; color: #78716c; font-size: 13px; }
 .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .badges span { border-radius: 999px; padding: 4px 9px; font-size: 12px; border: 1px solid rgba(132, 204, 22, .25); background: rgba(236, 252, 203, .4); color: #3f6212; }
@@ -43,7 +43,7 @@ code { color: #65a30d; background: rgba(236, 252, 203, .5); padding: 2px 7px; bo
 .context-menu button.danger:hover { background: rgba(254, 226, 226, .5); }
 .context-menu button + button { margin-top: 2px; }
 .drawer { position: fixed; right: 18px; top: 86px; bottom: 18px; z-index: 20; width: min(420px, calc(100vw - 36px)); border: 1px solid rgba(28, 25, 23, .12); background: rgba(255, 255, 255, .97); border-radius: 22px; padding: 18px; overflow: auto; box-shadow: 0 4px 24px rgba(0,0,0,.06); }
-.drawer h2 { margin: 0 0 6px; letter-spacing: -0.03em; font-weight: 600; color: #292524; }
+.drawer h2 { margin: 0 0 6px; letter-spacing: -0.03em; font-weight: 600; color: #292524; -webkit-text-stroke: 0.5px #faf9f7; -webkit-text-fill-color: #292524; }
 .drawer h3 { margin: 20px 0 0; letter-spacing: -0.02em; color: #292524; }
 .close { float: right; border: 1px solid rgba(168, 162, 158, .2); background: rgba(250, 250, 249, .8); color: #78716c; border-radius: 999px; padding: 6px 10px; cursor: crosshair; font-size: 12px; transition: all .15s; }
 .close:hover { border-color: rgba(168, 162, 158, .35); color: #292524; }

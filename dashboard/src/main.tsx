@@ -339,7 +339,7 @@ function Dashboard() {
   }, [])
 
   const deleteInstance = useCallback(async (instanceId: string) => {
-    if (!instanceId || !window.confirm(`Delete offline OpenCode instance ${instanceId}? This removes its hub record plus related threads and messages.`)) return
+    if (!instanceId) return
     const response = await fetch(`/instances/${encodeURIComponent(instanceId)}`, { method: "DELETE" })
     if (!response.ok) throw new Error(`Failed to delete instance: ${response.status}`)
     setSelected(null)

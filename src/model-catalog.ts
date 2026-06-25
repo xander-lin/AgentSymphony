@@ -2,9 +2,12 @@ import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
+export type ModelModality = "text" | "image" | "audio" | "video"
+
 export interface ModelCatalogEntry {
   id: string
   label?: string
+  modalities?: ModelModality[]
   strengths?: string[]
   bestFor?: string[]
   avoidFor?: string[]
@@ -35,6 +38,7 @@ export function formatModelCatalogGuidance(models: ModelCatalogEntry[]): string 
 
   const entries = models.map((model) => {
     const lines = [`- ${model.id}${model.label ? ` (${model.label})` : ""}`]
+    if (model.modalities?.length) lines.push(`  modalities: ${model.modalities.join(", ")}`)
     if (model.strengths?.length) lines.push(`  strengths: ${model.strengths.join(", ")}`)
     if (model.bestFor?.length) lines.push(`  best for: ${model.bestFor.join(", ")}`)
     if (model.avoidFor?.length) lines.push(`  avoid for: ${model.avoidFor.join(", ")}`)
@@ -48,10 +52,25 @@ async function tryLoadCatalog(path: string): Promise<ModelCatalogEntry[] | undef
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as ModelCatalogConfig | ModelCatalogEntry[]
     const models = Array.isArray(parsed) ? parsed : parsed.models
-    return models?.filter((model) => typeof model.id === "string") ?? []
+    return models
+      ?.filter((model) => typeof model.id === "string")
+      .map((model) => normalizeModelEntry(model)) ?? []
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? error.code : undefined
     if (code === "ENOENT") return undefined
     throw error
   }
+}
+
+function normalizeModelEntry(model: ModelCatalogEntry): ModelCatalogEntry {
+  return {
+    ...model,
+    modalities: normalizeModalities(model.modalities),
+  }
+}
+
+function normalizeModalities(modalities: ModelModality[] | undefined): ModelModality[] | undefined {
+  if (!modalities || modalities.length === 0) return undefined
+  const allowed: ModelModality[] = ["text", "image", "audio", "video"]
+  return modalities.filter((modality): modality is ModelModality => allowed.includes(modality))
 }

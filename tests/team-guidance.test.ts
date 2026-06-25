@@ -40,6 +40,7 @@ describe("team system guidance", () => {
         models: [{
           id: "provider/fast-current",
           label: "Fast current model",
+          modalities: ["text", "image"],
           strengths: ["cheap", "low latency"],
           bestFor: ["smoke tests", "formatting"],
           avoidFor: ["architecture review"],
@@ -60,6 +61,7 @@ describe("team system guidance", () => {
       await hooks["experimental.chat.system.transform"]?.({ sessionID: "ses", model: {} as never }, output)
 
       expect(output.system[0]).toContain("provider/fast-current")
+      expect(output.system[0]).toContain("modalities: text, image")
       expect(output.system[0]).toContain("cheap, low latency")
       expect(output.system[0]).toContain("architecture review")
     } finally {

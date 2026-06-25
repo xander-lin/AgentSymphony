@@ -400,9 +400,6 @@ function Dashboard() {
         <div><h1>AgentSymphony Hub</h1><p>Auto-layout infinite canvas for OpenCode collaboration</p></div>
         <div className="stats"><span>Online <b>{snapshot.instances.filter((instance) => instance.online !== false).length}</b></span><span>Known <b>{snapshot.instances.length}</b></span><span>Threads <b>{snapshot.conversations.length}</b></span><span>Messages <b>{snapshot.messages.length}</b></span><span>Queued <b>{queued}</b></span></div>
       </header>
-      <div className="connect-bar">
-        <span>Remote: set <code>hubUrl</code> to <code>{window.location.origin}</code> in <code>config.json</code>. Drag between instance handles to create conversations.</span>
-      </div>
       <ReactFlow
         nodes={nodes}
         edges={edges}

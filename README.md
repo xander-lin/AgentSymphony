@@ -102,6 +102,61 @@ The project supports modular builds via separate tsconfig files:
 | daemon | `tsconfig.daemon.json` | Hub daemon (HTTP server, storage, memory hub) |
 | full | `tsconfig.build.json` | Full build for development and testing |
 
+## Multi-machine Setup
+
+AgentSymphony supports multi-machine collaboration through a shared hub daemon. Each machine runs its own OpenCode plugin, and they all connect to the same hub.
+
+### Architecture
+
+```
+Machine A                      Machine B
+OpenCode + plugin              OpenCode + plugin
+    ↕ hubUrl: http://HUB:4777     ↕ hubUrl: http://HUB:4777
+    └───────── hub daemon ────────┘
+```
+
+The hub daemon runs on one machine and relays messages between instances. Launch/resume/delete run locally on each machine — teammates always open in a visible TUI window on the machine that launched them.
+
+### Hub Machine Setup
+
+```sh
+# Create config
+mkdir -p ~/.config/opencode/agentsymphony
+cat > ~/.config/opencode/agentsymphony/config.json << 'EOF'
+{ "hubUrl": "http://0.0.0.0:4777" }
+EOF
+
+# Enable and start hub daemon
+systemctl --user enable --now agentsymphony-hub
+```
+
+Ensure firewall allows inbound TCP to port 4777 from teammate machines. For production, use a reverse proxy with TLS.
+
+### Teammate Machine Setup
+
+Each teammate machine configures its plugin to point to the hub:
+
+```json
+// ~/.config/opencode/agentsymphony/config.json
+{ "hubUrl": "http://<hub-server-ip>:4777" }
+```
+
+Start OpenCode with the plugin loaded. The plugin connects to the hub, registers the instance, and becomes visible in the dashboard.
+
+### Verification
+
+A quick test script is available at `scripts/verify-multi.sh`:
+
+```sh
+# On hub machine:
+systemctl --user restart agentsymphony-hub
+
+# On two teammate machines, start OpenCode and run:
+opencode --prompt "Connect to hub at $(cat ~/.config/opencode/agentsymphony/config.json | grep hubUrl | cut -d\" -f4)"
+```
+
+Open the hub dashboard at `http://<hub-server-ip>:4777/` to see connected instances and drag between handles to create conversations.
+
 ## Architecture Principles
 
 The codebase follows pluggable, interface-driven design per `AGENTS.md`:

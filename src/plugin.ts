@@ -2,7 +2,8 @@ import { type Plugin, tool } from "@opencode-ai/plugin"
 import { startHubConnector } from "./hub/connector.ts"
 import { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
 import { resolveHubUrl } from "./hub/hub-config.ts"
-import { launchHubReceiver, resumeHubReceiver, loadReceiverPid } from "./hub/receiver-launcher.ts"
+import { loadReceiverPid } from "./hub/receiver-launcher.ts"
+import { KittyReceiverLauncher } from "./hub/kitty-launcher.ts"
 import { FileReplyContextStore } from "./hub/reply-context.ts"
 import type { HubMessage } from "./hub/types.ts"
 import type { ReplyContext } from "./hub/reply-context.ts"
@@ -33,6 +34,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   }
   if (bootstrapSessionId) await bindSessionIdentity(bootstrapSessionId)
   const hub = new HttpAgentSymphonyHubClient(await resolveHubUrl())
+  const launcher = new KittyReceiverLauncher()
   const replyContext = new FileReplyContextStore(directory, () => identity?.id)
   const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client, () => currentSessionId, directory), replyContext })
   let teamSystemGuidance: string | undefined
@@ -177,7 +179,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
           return enqueueLaunch(async () => {
-            const result = await launchHubReceiver({
+            const result = await launcher.launch({
               hub,
               directory,
               title: args.title,
@@ -220,7 +222,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
           return enqueueLaunch(async () => {
-            const result = await resumeHubReceiver({
+            const result = await launcher.resume({
               hub,
               directory,
               sessionId: args.sessionId,

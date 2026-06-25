@@ -55,4 +55,8 @@ export class MockReceiverLauncher implements HubReceiverLauncher {
     this.launchErrors = []
     this.resumeErrors = []
   }
+
+  async getChildPids(_sessionId: string): Promise<number[]> {
+    return []
+  }
 }

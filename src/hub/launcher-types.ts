@@ -3,4 +3,5 @@ import type { LaunchedHubReceiver, LaunchHubReceiverInput, ResumeHubReceiverInpu
 export interface HubReceiverLauncher {
   launch(input: LaunchHubReceiverInput): Promise<LaunchedHubReceiver>
   resume(input: ResumeHubReceiverInput): Promise<LaunchedHubReceiver>
+  getChildPids(sessionId: string): Promise<number[]>
 }

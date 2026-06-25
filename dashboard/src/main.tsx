@@ -1,5 +1,5 @@
 import "@xyflow/react/dist/style.css"
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import ELK from "elkjs/lib/elk.bundled.js"
 import {
@@ -208,20 +208,31 @@ async function layoutGraph(nodes: Node<GraphNodeData>[], edges: Edge[]): Promise
   return nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }))
 }
 
-function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread, onDeleteInstance }: {
+function ContextMenu({ menu, onClose, onInspect, onFocusNode, onCopyThread, onDeleteInstance, onDeleteConnections }: {
   menu: { x: number; y: number; node: Node<GraphNodeData> } | null
   onClose: () => void
   onInspect: (node: Node<GraphNodeData>) => void
   onFocusNode: (nodeId: string) => void
   onCopyThread: (node: Node<GraphNodeData>) => void
   onDeleteInstance: (node: Node<GraphNodeData>) => void
+  onDeleteConnections: (node: Node<GraphNodeData>) => void
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!menu) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as globalThis.Node)) onClose()
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [menu, onClose])
   if (!menu) return null
   const data = menu.node.data
   return (
-    <div className="context-menu" role="menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={onClose}>
+    <div ref={ref} className="context-menu" role="menu" style={{ left: menu.x, top: menu.y }}>
       <button type="button" onClick={() => onInspect(menu.node)}>Inspect</button>
       <button type="button" onClick={() => { void navigator.clipboard?.writeText(menu.node.id); onClose() }}>Copy Node ID</button>
+      {data.kind === "instance" && <button type="button" onClick={() => { onDeleteConnections(menu.node); onClose() }}>Delete Connections</button>}
       {data.kind === "instance" && data.instance.online === false && <button type="button" className="danger" onClick={() => onDeleteInstance(menu.node)}>Delete Offline Instance</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onCopyThread(menu.node)}>Copy Latest Thread</button>}
       {data.kind === "relationship" && <button type="button" onClick={() => onFocusNode(`instance:${data.relationship.createdByInstanceId}`)}>Focus Creator</button>}
@@ -341,6 +352,16 @@ function Dashboard() {
     void deleteInstance(node.data.instance.id)
   }, [deleteInstance])
 
+  const deleteConnections = useCallback(async (node: Node<GraphNodeData>) => {
+    if (node.data.kind !== "instance") return
+    const instanceId = node.data.instance.id
+    for (const conversation of snapshot.conversations) {
+      if (conversation.parentInstanceId !== instanceId && conversation.targetInstanceId !== instanceId) continue
+      await fetch(`/threads/${encodeURIComponent(conversation.threadName)}/archive`, { method: "POST" })
+    }
+    await refresh()
+  }, [snapshot.conversations, refresh])
+
   const hasExistingConversation = useCallback((sourceId: string, targetId: string) => {
     return snapshot.conversations.some((c) =>
       (c.parentInstanceId === sourceId && c.targetInstanceId === targetId) ||
@@ -401,7 +422,7 @@ function Dashboard() {
         <Controls />
         <MiniMap pannable zoomable />
       </ReactFlow>
-      <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onDeleteInstance={deleteNodeInstance} onInspect={(node) => { setSelected(node); setMenu(null) }} />
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} onFocusNode={focusNode} onCopyThread={copyThread} onDeleteInstance={deleteNodeInstance} onDeleteConnections={deleteConnections} onInspect={(node) => { setSelected(node); setMenu(null) }} />
       <DetailsDrawer node={selected} instancesById={instancesById} conversations={snapshot.conversations} onDeleteInstance={deleteInstance} onClose={() => setSelected(null)} />
     </div>
   )

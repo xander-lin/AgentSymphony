@@ -414,6 +414,7 @@ function Dashboard() {
         connectionLineStyle={{ stroke: "#38bdf8", strokeWidth: 2 }}
         onNodeClick={(_, node) => setSelected(node)}
         onNodeContextMenu={(event, node) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, node }) }}
+        onPaneClick={() => setMenu(null)}
         fitView
         minZoom={0.1}
         maxZoom={2.5}

@@ -129,12 +129,19 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
     })
   }
 
-  async deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult> {
+  async deleteInstance(instanceId: string, callerId?: string): Promise<DeleteHubInstanceResult> {
     return this.write(async () => {
       const snapshot = await this.loadSnapshot()
       const instance = snapshot.instances.get(instanceId)
       if (!instance) return { removedConversations: [], removedMessages: 0 }
       if (this.isLive(instance)) throw new Error(`Cannot delete live AgentSymphony instance: ${instanceId}`)
+      if (callerId && callerId !== instanceId) {
+        const isOwner = [...snapshot.conversations.values()].some((c) =>
+          (c.parentInstanceId === instanceId || c.targetInstanceId === instanceId) &&
+          (c.parentInstanceId === callerId || c.targetInstanceId === callerId)
+        )
+        if (!isOwner) throw new Error(`Instance ${callerId} is not a conversation participant with ${instanceId}`)
+      }
 
       const removedConversations = [...snapshot.conversations.values()].filter((conversation) => conversation.parentInstanceId === instanceId || conversation.targetInstanceId === instanceId)
       const removedConversationIds = new Set(removedConversations.map((conversation) => conversation.id))

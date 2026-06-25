@@ -108,7 +108,7 @@ export async function findVisibleConversationByThread(hub: Pick<AgentSymphonyHub
 export async function deleteVisibleTeammate(hub: Pick<AgentSymphonyHub, "listConversationsForInstance" | "deleteInstance">, instanceId: string, targetInstanceId: string): Promise<DeleteHubInstanceResult> {
   const teammate = await findVisibleTeammateByInstanceId(hub, instanceId, targetInstanceId)
   if (!teammate) throw new Error(`Cannot delete teammate outside this session's visible teammate set: ${targetInstanceId}`)
-  return hub.deleteInstance(targetInstanceId)
+  return hub.deleteInstance(targetInstanceId, instanceId)
 }
 
 export async function findVisibleTeammateByInstanceId(hub: Pick<AgentSymphonyHub, "listConversationsForInstance">, instanceId: string, targetInstanceId: string): Promise<HubConversation | undefined> {

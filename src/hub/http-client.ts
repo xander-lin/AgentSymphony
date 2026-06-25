@@ -41,8 +41,9 @@ export class HttpAgentSymphonyHubClient implements AgentSymphonyHub {
     return this.request(`/threads/${encodeURIComponent(threadName)}/archive`, { method: "POST" })
   }
 
-  deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult> {
-    return this.request(`/instances/${encodeURIComponent(instanceId)}`, { method: "DELETE" })
+  deleteInstance(instanceId: string, callerId?: string): Promise<DeleteHubInstanceResult> {
+    const path = callerId ? `/instances/${encodeURIComponent(instanceId)}?caller=${encodeURIComponent(callerId)}` : `/instances/${encodeURIComponent(instanceId)}`
+    return this.request(path, { method: "DELETE" })
   }
 
   sendMessage(input: SendHubMessageInput): Promise<HubMessage> {

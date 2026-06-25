@@ -63,7 +63,7 @@ async function route(hub: AgentSymphonyHub, request: IncomingMessage, response: 
   if (method === "GET" && url.pathname === "/monitor/snapshot") return writeJson(response, 200, await getMonitorSnapshot(hub))
   if (method === "GET" && url.pathname === "/instances") return writeJson(response, 200, await hub.listInstances())
   if (method === "POST" && url.pathname === "/instances") return writeJson(response, 200, await hub.registerInstance(await readJson(request)))
-  if (method === "DELETE" && parts[0] === "instances" && parts[1] && parts.length === 2) return writeJson(response, 200, await hub.deleteInstance(parts[1]))
+  if (method === "DELETE" && parts[0] === "instances" && parts[1] && parts.length === 2) return writeJson(response, 200, await hub.deleteInstance(parts[1], url.searchParams.get("caller") ?? undefined))
   if (method === "POST" && parts[0] === "instances" && parts[2] === "heartbeat") return writeJson(response, 200, await hub.heartbeat(parts[1] ?? ""))
   if (method === "GET" && parts[0] === "instances" && parts[2] === "inbox") return writeJson(response, 200, await hub.pollMessages(parts[1] ?? ""))
   if (method === "GET" && parts[0] === "instances" && parts[2] === "conversations") return writeJson(response, 200, await hub.listConversationsForInstance(parts[1] ?? ""))

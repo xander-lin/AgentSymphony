@@ -74,7 +74,7 @@ export interface AgentSymphonyHub {
   getConversation(conversationId: string): Promise<HubConversation | undefined>
   listConversationsForInstance(instanceId: string): Promise<HubConversation[]>
   archiveThread(threadName: string): Promise<ArchiveHubThreadResult>
-  deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult>
+  deleteInstance(instanceId: string, callerId?: string): Promise<DeleteHubInstanceResult>
   sendMessage(input: SendHubMessageInput): Promise<HubMessage>
   listMessagesForConversation(conversationId: string, limit?: number): Promise<HubMessage[]>
   pollMessages(instanceId: string): Promise<HubMessage[]>

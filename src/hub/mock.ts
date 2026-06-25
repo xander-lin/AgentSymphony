@@ -152,7 +152,7 @@ export class MockAgentSymphonyHub implements AgentSymphonyHub {
     return { conversation, removedMessages, removedInstances: [] }
   }
 
-  async deleteInstance(instanceId: string): Promise<DeleteHubInstanceResult> {
+  async deleteInstance(instanceId: string, callerId?: string): Promise<DeleteHubInstanceResult> {
     this._calls.deleteInstance.push(instanceId)
     const error = this.deleteInstanceErrors.shift()
     if (error) throw error

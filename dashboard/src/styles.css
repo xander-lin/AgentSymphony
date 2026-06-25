@@ -14,11 +14,11 @@ body { background: #fdfcf8; color: #292524; font-family: Inter, ui-sans-serif, s
 .react-flow__handle.node-handle:hover { box-shadow: 0 0 0 4px rgba(163, 230, 53, .3), 0 0 24px rgba(163, 230, 53, .35); transform: scale(1.15); }
 .react-flow__handle.source-handle { right: -6px; background: linear-gradient(135deg, #84cc16, #4d7c0f); border-color: #fdfcf8; }
 .react-flow__handle.target-handle { left: -6px; background: linear-gradient(135deg, #65a30d, #3f6212); border-color: #fdfcf8; }
-.node-card { box-sizing: border-box; border: 1px solid rgba(163, 230, 53, .2); border-radius: 22px; background: linear-gradient(145deg, rgba(247, 254, 231, .95) 0%, rgba(255, 255, 255, .95) 100%); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 12px rgba(163, 230, 53, .08); color: #292524; padding: 16px; }
+.node-card { box-sizing: border-box; border: 1px solid rgba(132, 204, 22, .25); border-radius: 22px; background: linear-gradient(145deg, rgba(240, 253, 224, .95) 0%, rgba(255, 255, 255, .95) 100%); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 12px rgba(132, 204, 22, .1); color: #292524; padding: 16px; }
 .instance-card { width: 280px; min-height: 118px; }
-.instance-card.online { border-color: rgba(163, 230, 53, .35); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(163, 230, 53, .1); }
+.instance-card.online { border-color: rgba(132, 204, 22, .4); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 20px rgba(132, 204, 22, .15); }
 .instance-card.offline { border-color: rgba(168, 162, 158, .12); opacity: .55; filter: grayscale(.8); }
-.thread-card { width: 340px; min-height: 168px; border-color: rgba(163, 230, 53, .2); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 12px rgba(163, 230, 53, .08); }
+.thread-card { width: 340px; min-height: 168px; border-color: rgba(132, 204, 22, .2); box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 4px 12px rgba(132, 204, 22, .1); }
 .eyebrow { color: #a8a29e; font-size: 10px; text-transform: uppercase; letter-spacing: .15em; margin-bottom: 8px; }
 .node-title { font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; color: #292524; }
 .node-meta { margin-top: 10px; color: #a8a29e; font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -26,10 +26,10 @@ code { color: #65a30d; background: rgba(236, 252, 203, .5); padding: 2px 7px; bo
 .thread-name { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: #4d7c0f; }
 .thread-title { margin-top: 5px; color: #78716c; font-size: 13px; }
 .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-.badges span { border-radius: 999px; padding: 4px 9px; font-size: 12px; border: 1px solid rgba(163, 230, 53, .2); background: rgba(236, 252, 203, .3); color: #4d7c0f; }
+.badges span { border-radius: 999px; padding: 4px 9px; font-size: 12px; border: 1px solid rgba(132, 204, 22, .25); background: rgba(236, 252, 203, .4); color: #3f6212; }
 .queued { color: #ca8a04; } .delivered { color: #65a30d; } .acknowledged { color: #22c55e; }
 .thread-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.thread-list span { border: 1px solid rgba(163, 230, 53, .15); background: rgba(236, 252, 203, .2); color: #4d7c0f; border-radius: 999px; padding: 5px 10px; font-size: 12px; }
+.thread-list span { border: 1px solid rgba(132, 204, 22, .2); background: rgba(236, 252, 203, .3); color: #3f6212; border-radius: 999px; padding: 5px 10px; font-size: 12px; }
 .thread-list.vertical { display: grid; }
 .thread-list.vertical span { border-radius: 12px; line-height: 1.35; }
 .react-flow__edge { z-index: 2; }

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "src/hub/daemon.ts",
+    "src/hub/http-server.ts",
+    "src/hub/dashboard.ts",
+    "src/hub/memory.ts",
+    "src/hub/memory-store.ts",
+    "src/hub/file-store.ts",
+    "src/hub/sqlite-store.ts",
+    "src/hub/store.ts",
+    "src/hub/types.ts",
+    "src/hub/process.ts",
+    "src/instance/**/*.ts",
+    "src/shared/id.ts"
+  ]
+}

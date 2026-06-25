@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { constants } from "node:fs"
 import { access } from "node:fs/promises"
 import { delimiter, join } from "node:path"
 import type { LaunchTerminalRequest, TerminalLauncher, TerminalWindowRecord } from "./launcher.ts"
@@ -110,7 +111,7 @@ async function isExecutableOnPath(command: string, pathValue: string | undefined
 
 async function canAccess(filePath: string): Promise<boolean> {
   try {
-    await access(filePath)
+    await access(filePath, constants.X_OK)
     return true
   } catch {
     return false

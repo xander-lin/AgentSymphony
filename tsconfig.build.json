@@ -1,14 +1,4 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "allowImportingTsExtensions": true,
-    "declaration": false,
-    "noEmit": false,
-    "outDir": "dist",
-    "rewriteRelativeImportExtensions": true,
-    "rootDir": "src",
-    "types": ["node"]
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["tests", "dashboard", ".opencode"]
+  "extends": "./tsconfig.base.json",
+  "include": ["src/**/*.ts"]
 }

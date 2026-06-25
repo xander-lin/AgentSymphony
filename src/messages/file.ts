@@ -10,33 +10,38 @@ interface StoreFile {
 
 export class FileMessageBus implements MessageBus {
   private readonly filePath: string
+  private writeQueue = Promise.resolve()
 
   constructor(private readonly rootDirectory: string) {
     this.filePath = join(rootDirectory, ".agentsymphony", "store.json")
   }
 
   async createConversation(input: Omit<ConversationRecord, "createdAt" | "updatedAt" | "status">): Promise<ConversationRecord> {
-    const store = await this.readStore()
-    const timestamp = nowIso()
-    const record: ConversationRecord = {
-      ...input,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      status: "created",
-    }
-    store.conversations.push(record)
-    await this.writeStore(store)
-    return record
+    return this.write(async () => {
+      const store = await this.readStore()
+      const timestamp = nowIso()
+      const record: ConversationRecord = {
+        ...input,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: "created",
+      }
+      store.conversations.push(record)
+      await this.writeStore(store)
+      return record
+    })
   }
 
   async updateConversation(conversation: ConversationRecord): Promise<ConversationRecord> {
-    const store = await this.readStore()
-    const updated = { ...conversation, updatedAt: nowIso() }
-    const index = store.conversations.findIndex((record) => record.id === updated.id)
-    if (index === -1) store.conversations.push(updated)
-    else store.conversations[index] = updated
-    await this.writeStore(store)
-    return updated
+    return this.write(async () => {
+      const store = await this.readStore()
+      const updated = { ...conversation, updatedAt: nowIso() }
+      const index = store.conversations.findIndex((record) => record.id === updated.id)
+      if (index === -1) store.conversations.push(updated)
+      else store.conversations[index] = updated
+      await this.writeStore(store)
+      return updated
+    })
   }
 
   async getConversation(id: string): Promise<ConversationRecord | undefined> {
@@ -50,15 +55,17 @@ export class FileMessageBus implements MessageBus {
   }
 
   async appendMessage(message: Omit<ConversationMessage, "id" | "createdAt">): Promise<ConversationMessage> {
-    const store = await this.readStore()
-    const record: ConversationMessage = {
-      ...message,
-      id: createId("msg"),
-      createdAt: nowIso(),
-    }
-    store.messages.push(record)
-    await this.writeStore(store)
-    return record
+    return this.write(async () => {
+      const store = await this.readStore()
+      const record: ConversationMessage = {
+        ...message,
+        id: createId("msg"),
+        createdAt: nowIso(),
+      }
+      store.messages.push(record)
+      await this.writeStore(store)
+      return record
+    })
   }
 
   async listMessages(conversationId: string, since?: string): Promise<ConversationMessage[]> {
@@ -83,6 +90,12 @@ export class FileMessageBus implements MessageBus {
   private async writeStore(store: StoreFile): Promise<void> {
     await mkdir(join(this.rootDirectory, ".agentsymphony"), { recursive: true })
     await writeFile(this.filePath, `${JSON.stringify(store, null, 2)}\n`, "utf8")
+  }
+
+  private async write<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(operation, operation)
+    this.writeQueue = next.then(() => undefined, () => undefined)
+    return next
   }
 }
 

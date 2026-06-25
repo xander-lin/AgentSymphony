@@ -1,19 +1,18 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
-import type { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
-import type { DeleteHubInstanceResult, HubConversation, HubMessage } from "./hub/types.ts"
+import type { AgentSymphonyHub, DeleteHubInstanceResult, HubConversation, HubMessage } from "./hub/types.ts"
 import type { InstanceIdentity } from "./instance/identity.ts"
 
 export async function respondHub(input: {
   ok?: boolean
-  hub: HttpAgentSymphonyHubClient
+  hub: AgentSymphonyHub
   directory: string
   identity: InstanceIdentity | undefined
   type: string
   summary: string
   data: unknown
 }): Promise<string> {
-  const warnings = await offlineReceiverWarnings(input.hub, input.directory, input.identity)
+  const warnings = input.hub.getMonitorSnapshot ? await offlineReceiverWarnings(input.hub as { getMonitorSnapshot: NonNullable<AgentSymphonyHub["getMonitorSnapshot"]> }, input.directory, input.identity) : []
   return JSON.stringify({
     ok: input.ok ?? true,
     type: input.type,
@@ -23,7 +22,7 @@ export async function respondHub(input: {
   }, null, 2)
 }
 
-export async function offlineReceiverWarnings(hub: Pick<HttpAgentSymphonyHubClient, "getMonitorSnapshot">, directory: string, identity: InstanceIdentity | undefined): Promise<unknown[]> {
+export async function offlineReceiverWarnings(hub: { getMonitorSnapshot: NonNullable<AgentSymphonyHub["getMonitorSnapshot"]> }, directory: string, identity: InstanceIdentity | undefined): Promise<unknown[]> {
   if (!identity) return []
   const snapshot = await hub.getMonitorSnapshot()
   const liveInstanceIds = new Set(snapshot.instances.filter((instance) => instance.online !== false).map((instance) => instance.id))
@@ -58,13 +57,14 @@ export async function offlineReceiverWarnings(hub: Pick<HttpAgentSymphonyHubClie
 }
 
 export async function sendHubMessageOrOfflineNotice(input: {
-  hub: HttpAgentSymphonyHubClient
+  hub: AgentSymphonyHub
   directory: string
   conversationId: string
   fromInstanceId: string
   content: string
   variant?: string
 }): Promise<{ ok: true; message: HubMessage } | { ok: false; summary: string; data: unknown }> {
+  if (!input.content.trim()) throw new Error("Message content cannot be empty")
   const conversation = await input.hub.getConversation(input.conversationId)
   if (!conversation) throw new Error(`Unknown hub conversation: ${input.conversationId}`)
   const targetInstanceId = input.fromInstanceId === conversation.parentInstanceId ? conversation.targetInstanceId : conversation.parentInstanceId
@@ -87,7 +87,7 @@ export async function sendHubMessageOrOfflineNotice(input: {
 }
 
 export async function sendInitialHubMessage(input: {
-  hub: Pick<HttpAgentSymphonyHubClient, "listInstances" | "sendMessage">
+  hub: Pick<AgentSymphonyHub, "listInstances" | "sendMessage">
   fromInstanceId: string
   conversation: HubConversation
   content?: string
@@ -100,18 +100,18 @@ export async function sendInitialHubMessage(input: {
   return input.hub.sendMessage({ conversationId: input.conversation.id, fromInstanceId: input.fromInstanceId, content: input.content, variant: input.variant })
 }
 
-export async function findVisibleConversationByThread(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance">, instanceId: string, threadName: string): Promise<HubConversation | undefined> {
+export async function findVisibleConversationByThread(hub: Pick<AgentSymphonyHub, "listConversationsForInstance">, instanceId: string, threadName: string): Promise<HubConversation | undefined> {
   const conversations = await hub.listConversationsForInstance(instanceId)
   return conversations.find((candidate) => candidate.threadName === threadName)
 }
 
-export async function deleteVisibleTeammate(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance" | "deleteInstance">, instanceId: string, targetInstanceId: string): Promise<DeleteHubInstanceResult> {
+export async function deleteVisibleTeammate(hub: Pick<AgentSymphonyHub, "listConversationsForInstance" | "deleteInstance">, instanceId: string, targetInstanceId: string): Promise<DeleteHubInstanceResult> {
   const teammate = await findVisibleTeammateByInstanceId(hub, instanceId, targetInstanceId)
   if (!teammate) throw new Error(`Cannot delete teammate outside this session's visible teammate set: ${targetInstanceId}`)
   return hub.deleteInstance(targetInstanceId)
 }
 
-export async function findVisibleTeammateByInstanceId(hub: Pick<HttpAgentSymphonyHubClient, "listConversationsForInstance">, instanceId: string, targetInstanceId: string): Promise<HubConversation | undefined> {
+export async function findVisibleTeammateByInstanceId(hub: Pick<AgentSymphonyHub, "listConversationsForInstance">, instanceId: string, targetInstanceId: string): Promise<HubConversation | undefined> {
   if (instanceId === targetInstanceId) return undefined
   const conversations = await hub.listConversationsForInstance(instanceId)
   return conversations.find((conversation) => conversation.parentInstanceId === targetInstanceId || conversation.targetInstanceId === targetInstanceId)
@@ -131,18 +131,28 @@ export function defaultThreadName(value: string): string {
   return `receiver-${value.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(-12)}`
 }
 
+const sessionIdCache = new Map<string, string>()
+
 export async function findSessionIdForInstance(directory: string, instanceId: string): Promise<string | undefined> {
+  const cacheKey = `${directory}:${instanceId}`
+  const cached = sessionIdCache.get(cacheKey)
+  if (cached !== undefined) return cached || undefined
   const instancesDirectory = join(directory, ".agentsymphony", "instances")
   try {
     const entries = await readdir(instancesDirectory)
     for (const entry of entries) {
       if (!entry.startsWith("session-") || !entry.endsWith(".json")) continue
       const parsed = JSON.parse(await readFile(join(instancesDirectory, entry), "utf8")) as Partial<InstanceIdentity>
-      if (parsed.id === instanceId) return entry.slice("session-".length, -".json".length)
+      if (parsed.id === instanceId) {
+        const sessionId = entry.slice("session-".length, -".json".length)
+        sessionIdCache.set(cacheKey, sessionId)
+        return sessionId
+      }
     }
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? error.code : undefined
     if (code !== "ENOENT") throw error
   }
+  sessionIdCache.set(cacheKey, "")
   return undefined
 }

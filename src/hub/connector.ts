@@ -21,6 +21,16 @@ export type HubConnectorStatus =
   | { connected: true; instance: HubInstance; error?: undefined }
   | { connected: false; instance?: undefined; error?: string }
 
+export interface HubConnectorFactory {
+  start(options: HubConnectorOptions): HubConnectorHandle
+}
+
+export class PollingHubConnectorFactory implements HubConnectorFactory {
+  start(options: HubConnectorOptions): HubConnectorHandle {
+    return startHubConnector(options)
+  }
+}
+
 export function startHubConnector(options: HubConnectorOptions): HubConnectorHandle {
   const intervalMs = options.pollIntervalMs ?? 1000
   let stopped = false
@@ -48,12 +58,19 @@ export function startHubConnector(options: HubConnectorOptions): HubConnectorHan
       status = { connected: true, instance }
       const messages = await options.hub.pollMessages(instance.id)
       for (const message of messages) {
-        const conversation = await options.hub.getConversation(message.conversationId)
-        if (!conversation) continue
-        const createdByThisInstance = conversation.createdByInstanceId === instance.id
-        await options.replyContext.setFromMessage({ message, threadName: conversation.threadName, createdByThisInstance })
-        await options.tui.injectPrompt(formatInjectedHubPrompt(message, conversation, createdByThisInstance), { variant: message.variant })
-        await options.hub.acknowledgeMessage(message.id)
+        try {
+          const conversation = await options.hub.getConversation(message.conversationId)
+          if (!conversation) {
+            await options.hub.acknowledgeMessage(message.id)
+            continue
+          }
+          const createdByThisInstance = conversation.createdByInstanceId === instance.id
+          await options.replyContext.setFromMessage({ message, threadName: conversation.threadName, createdByThisInstance })
+          await options.tui.injectPrompt(formatInjectedHubPrompt(message, conversation, createdByThisInstance), { variant: message.variant })
+          await options.hub.acknowledgeMessage(message.id)
+        } catch (error) {
+          process.stderr.write(`AgentSymphony connector: failed to process message ${message.id}: ${error instanceof Error ? error.message : String(error)}\n`)
+        }
       }
     } catch (error) {
       status = { connected: false, error: error instanceof Error ? error.message : String(error) }

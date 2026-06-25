@@ -1,31 +1,38 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
-import { join } from "node:path"
 import { startHubConnector } from "./hub/connector.ts"
 import { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
-import { launchHubReceiver, resumeHubReceiver } from "./hub/receiver-launcher.ts"
+import { launchHubReceiver, resumeHubReceiver, loadReceiverPid } from "./hub/receiver-launcher.ts"
 import { FileReplyContextStore } from "./hub/reply-context.ts"
+import type { HubMessage } from "./hub/types.ts"
 import type { ReplyContext } from "./hub/reply-context.ts"
 import { FileInstanceIdentityStore, type InstanceIdentity } from "./instance/identity.ts"
 import { OpenCodeTuiController } from "./tui/opencode.ts"
 import { buildTeamSystemGuidance } from "./plugin-guidance.ts"
 import { loadModelCatalog } from "./model-catalog.ts"
 import { defaultThreadName, deleteVisibleTeammate, describeConversation, findSessionIdForInstance, findVisibleConversationByThread, findVisibleTeammateByInstanceId, respondHub, sendHubMessageOrOfflineNotice, sendInitialHubMessage } from "./plugin-utils.ts"
+import { findOpenCodePidsForSession, findChildPids, killKittyParent, killProcessesGracefully } from "./hub/process.ts"
 
 export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
   const identityStore = new FileInstanceIdentityStore()
   let identity: InstanceIdentity | undefined
   let currentSessionId: string | undefined
+  let identityBindingQueue = Promise.resolve()
   let launchQueue = Promise.resolve()
   const bootstrapSessionId = process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   delete process.env.AGENTSYMPHONY_RESUME_SESSION_ID
   const bindSessionIdentity = async (sessionId: string): Promise<InstanceIdentity> => {
-    currentSessionId = sessionId
-    identity = await identityStore.load(directory, sessionId, identity)
-    return identity
+    const bind = async () => {
+      currentSessionId = sessionId
+      identity = await identityStore.load(directory, sessionId, identity)
+      return identity
+    }
+    const next = identityBindingQueue.then(bind, bind)
+    identityBindingQueue = next.then(() => undefined, () => undefined)
+    return next
   }
   if (bootstrapSessionId) await bindSessionIdentity(bootstrapSessionId)
   const hub = new HttpAgentSymphonyHubClient()
-  const replyContext = new FileReplyContextStore(join(directory, ".agentsymphony", "reply-context.json"))
+  const replyContext = new FileReplyContextStore(directory, () => identity?.id)
   const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client, () => currentSessionId, directory), replyContext })
   let teamSystemGuidance: string | undefined
   const enqueueLaunch = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -169,6 +176,15 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
           const currentIdentity = identity
           return enqueueLaunch(async () => {
+            const existingConversations = await hub.listConversationsForInstance(currentIdentity.id)
+            const liveInstances = await hub.listInstances()
+            const liveTeammateIds = new Set(liveInstances.map((i) => i.id))
+            for (const conv of existingConversations) {
+              const mateId = conv.parentInstanceId === currentIdentity.id ? conv.targetInstanceId : conv.parentInstanceId
+              if (liveTeammateIds.has(mateId)) {
+                throw new Error(`Teammate ${mateId} is already live on thread ${conv.threadName}. Delete or resume it before launching a new one.`)
+              }
+            }
             const result = await launchHubReceiver({
               hub,
               directory,
@@ -183,7 +199,13 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
               title: threadName,
               threadName,
             })
-            const initialDelivery = await sendInitialHubMessage({ hub, fromInstanceId: currentIdentity.id, conversation, content: args.prompt })
+            let initialDelivery: HubMessage | undefined
+            try {
+              initialDelivery = await sendInitialHubMessage({ hub, fromInstanceId: currentIdentity.id, conversation, content: args.prompt })
+            } catch {
+              await hub.archiveThread(threadName)
+              throw new Error(`Failed to deliver initial message to receiver; thread ${threadName} has been cleaned up.`)
+            }
             return respondHub({ hub, directory, identity: currentIdentity, type: "hub.receiver.launched", summary: `Launched receiver ${result.instance.id} and connected thread ${conversation.threadName}${initialDelivery ? ", then queued the initial message" : ""}.`, data: {
               ...result,
               thread: describeConversation(conversation),
@@ -193,28 +215,32 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         },
       }),
       agentsymphony_hub_resume_receiver: tool({
-        description: "Team recovery: resume an offline teammate by OpenCode session id. Use when a warning says an offline teammate is still needed.",
+        description: "Team restart: restart an offline teammate by OpenCode session id. Kills any lingering processes for the session, then spawns a fresh receiver. Use when a warning says an offline teammate is still needed.",
         args: {
-          sessionId: tool.schema.string().describe("OpenCode session id to resume."),
-          processId: tool.schema.number().optional().describe("Existing process id to reuse only if it is still running this same session."),
+          sessionId: tool.schema.string().describe("OpenCode session id to restart."),
+          processId: tool.schema.number().optional().describe("Deprecated. Process lookup is now automatic via session id scan."),
           title: tool.schema.string().optional().describe("Window title only."),
           prompt: tool.schema.string().optional().describe("Optional first task message after resume. It is delivered through the hub, not as raw resume input."),
           variant: tool.schema.string().optional().describe("Variant for the resume prompt only. Resume does not change the session model."),
           timeoutMs: tool.schema.number().optional().describe("Maximum milliseconds to wait for receiver registration."),
         },
         async execute(args) {
-          const result = await resumeHubReceiver({
-            hub,
-            directory,
-            sessionId: args.sessionId,
-            processId: args.processId,
-            title: args.title,
-            variant: args.variant,
-            timeoutMs: args.timeoutMs,
-          })
-          const conversation = identity ? await findVisibleTeammateByInstanceId(hub, identity.id, result.instance.id) : undefined
-          const initialDelivery = conversation && identity ? await sendInitialHubMessage({ hub, fromInstanceId: identity.id, conversation, content: args.prompt, variant: args.variant }) : undefined
-          return respondHub({ hub, directory, identity, type: "hub.receiver.resumed", summary: `Resumed receiver ${result.instance.id}${initialDelivery ? ", then queued the initial message" : ""}.`, data: { ...result, initialMessage: initialDelivery } })
+          if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const currentIdentity = identity
+          return enqueueLaunch(async () => {
+            const result = await resumeHubReceiver({
+              hub,
+              directory,
+              sessionId: args.sessionId,
+              processId: args.processId,
+              title: args.title,
+              variant: args.variant,
+              timeoutMs: args.timeoutMs,
+            })
+            const conversation = identity ? await findVisibleTeammateByInstanceId(hub, identity.id, result.instance.id) : undefined
+            const initialDelivery = conversation && identity ? await sendInitialHubMessage({ hub, fromInstanceId: identity.id, conversation, content: args.prompt, variant: args.variant }) : undefined
+            return respondHub({ hub, directory, identity, type: "hub.receiver.resumed", summary: `Resumed receiver ${result.instance.id}${initialDelivery ? ", then queued the initial message" : ""}.`, data: { ...result, initialMessage: initialDelivery } })
+        })
         },
       }),
       agentsymphony_hub_send_thread: tool({
@@ -254,6 +280,11 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
           const currentIdentity = identity
           const context = args.thread ? await replyContext.getByThread(args.thread) : await replyContext.getLatest()
           if (!context) throw new Error("No inbound AgentSymphony conversation is available to reply to.")
+          try {
+            await hub.getConversation(context.conversationId)
+          } catch {
+            return respondHub({ ok: false, hub, directory, identity: currentIdentity, type: "hub.reply.stale_context", summary: "The conversation for this reply context no longer exists (may have been archived or the teammate deleted).", data: { context } })
+          }
           const result = await sendHubMessageOrOfflineNotice({
             hub,
             directory,
@@ -323,14 +354,32 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
         },
       }),
       agentsymphony_hub_delete_teammate: tool({
-        description: "Team cleanup: delete a stale offline teammate owned by this session. Related threads and hub messages are removed automatically. Ask the user before calling this tool.",
+        description: "Team cleanup: delete a stale offline teammate owned by this session. Automatically terminates associated processes before removing the hub record. Related threads and hub messages are removed automatically. Ask the user before calling this tool.",
         args: {
           targetInstanceId: tool.schema.string().describe("Offline teammate instance id shown in system_status or warnings. Must be connected to this session."),
         },
         async execute(args) {
           if (!identity) throw new Error("AgentSymphony hub is waiting for the current OpenCode session identity.")
+          const sessionId = await findSessionIdForInstance(directory, args.targetInstanceId)
+          if (sessionId) {
+            let pids: number[] = []
+            const recordedPid = await loadReceiverPid(directory, sessionId)
+            if (recordedPid !== undefined) {
+              pids.push(recordedPid)
+              const children = await findChildPids(recordedPid)
+              pids.push(...children)
+            }
+            const scannedPids = await findOpenCodePidsForSession(sessionId)
+            for (const pid of scannedPids) {
+              if (!pids.includes(pid)) pids.push(pid)
+            }
+            if (pids.length > 0) {
+              await killProcessesGracefully(pids)
+              await new Promise((resolve) => setTimeout(resolve, 4000))
+            }
+          }
           const result = await deleteVisibleTeammate(hub, identity.id, args.targetInstanceId)
-          return respondHub({ hub, directory, identity, type: "hub.teammate.deleted", summary: result.instance ? `Deleted offline teammate ${args.targetInstanceId} and related threads.` : `Teammate ${args.targetInstanceId} was not found.`, data: result })
+          return respondHub({ hub, directory, identity, type: "hub.teammate.deleted", summary: result.instance ? `Deleted teammate ${args.targetInstanceId} and related threads.` : `Teammate ${args.targetInstanceId} was not found.`, data: result })
         },
       }),
     },

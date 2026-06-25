@@ -141,41 +141,40 @@ describe("receiver launcher", () => {
     expect(resumed.instance).toMatchObject(receiverIdentity)
   })
 
-  it("reuses a live process when process id and session id match", async () => {
+  it("always kills old processes and spawns a new receiver (no reuse)", async () => {
     const hub = new MemoryAgentSymphonyHub()
     await hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" })
 
+    let spawned = false
     const resumed = await resumeHubReceiver({
       hub,
       directory: "/repo",
       sessionId: "ses_receiver",
-      processId: 789,
       timeoutMs: 1000,
       pollIntervalMs: 5,
       identityStore: new MemoryInstanceIdentityStore(receiverIdentity),
-      isSessionProcess: async (processId, sessionId) => processId === 789 && sessionId === "ses_receiver",
       spawnReceiver() {
-        throw new Error("should not spawn")
+        spawned = true
+        return { pid: 456, unref() {} }
       },
     })
 
-    expect(resumed.pid).toBe(789)
-    expect(resumed.reused).toBe(true)
+    expect(spawned).toBe(true)
+    expect(resumed.pid).toBe(456)
+    expect(resumed.reused).toBe(false)
     expect(resumed.instance).toMatchObject({ id: "receiver" })
   })
 
-  it("spawns a replacement when process id does not match the session", async () => {
+  it("spawns a new receiver when old process has exited", async () => {
     const hub = new MemoryAgentSymphonyHub()
 
     const resumed = await resumeHubReceiver({
       hub,
       directory: "/repo",
       sessionId: "ses_receiver",
-      processId: 789,
       timeoutMs: 1000,
       pollIntervalMs: 5,
       identityStore: new MemoryInstanceIdentityStore(receiverIdentity),
-      isSessionProcess: async () => false,
       spawnReceiver() {
         setTimeout(() => void hub.registerInstance({ id: "receiver", name: "receiver", directory: "/repo" }), 10)
         return { pid: 456, unref() {} }

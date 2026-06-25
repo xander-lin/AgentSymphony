@@ -28,11 +28,27 @@ export async function listenHubHttpServer(hub: AgentSymphonyHub, port = 4777, ho
     server.listen(port, hostname, () => resolve())
   })
 
+  const connections = new Set<import("node:net").Socket>()
+  server.on("connection", (socket) => {
+    connections.add(socket)
+    socket.once("close", () => connections.delete(socket))
+  })
+
   const address = server.address() as AddressInfo
   return {
     server,
     url: `http://${address.address}:${address.port}`,
-    close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    close: () => new Promise<void>((resolve) => {
+      const forceClose = setTimeout(() => {
+        for (const socket of connections) socket.destroy()
+        connections.clear()
+        resolve()
+      }, 5000)
+      server.close(() => {
+        clearTimeout(forceClose)
+        resolve()
+      })
+    }),
   }
 }
 

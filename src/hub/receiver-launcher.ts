@@ -1,17 +1,18 @@
 import { spawn } from "node:child_process"
-import { readFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { FileInstanceIdentityStore, type InstanceIdentityStore } from "../instance/identity.ts"
 import type { AgentSymphonyHub, HubInstance } from "./types.ts"
+import { findOpenCodePidsForSession, findChildPids, killProcessesGracefully } from "./process.ts"
 
 type SpawnReceiver = (directory: string, title: string | undefined, prompt: string, options?: LaunchModelOptions) => { pid?: number; unref(): void }
 type SpawnResumedReceiver = (directory: string, title: string | undefined, sessionId: string, prompt: string, options?: ResumeModelOptions) => { pid?: number; unref(): void }
 type IsSessionProcess = (processId: number, sessionId: string) => Promise<boolean>
 type ListSessions = () => Promise<OpenCodeSession[]>
 
-const DEFAULT_LAUNCH_PROMPT = "AgentSymphony receiver registration only. Do not list, read, or poll AgentSymphony threads. Do not start shell polling loops. Wait for injected AgentSymphony messages from the hub connector."
-const DEFAULT_RESUME_PROMPT = "AgentSymphony receiver resume registration only. Do not list, read, or poll AgentSymphony threads. Do not start shell polling loops. Wait for injected AgentSymphony messages from the hub connector."
+const DEFAULT_LAUNCH_PROMPT = "AgentSymphony receiver registration only. Do not list, read, or poll AgentSymphony threads. Do not start shell polling loops. Wait for injected AgentSymphony messages from the hub connector. When you receive an AgentSymphony message, reply to it using agentsymphony_hub_reply."
+const DEFAULT_RESUME_PROMPT = "AgentSymphony receiver resume registration only. Do not list, read, or poll AgentSymphony threads. Do not start shell polling loops. Wait for injected AgentSymphony messages from the hub connector. When you receive an AgentSymphony message, reply to it using agentsymphony_hub_reply."
 
 export interface OpenCodeSession {
   id: string
@@ -69,37 +70,87 @@ export async function launchHubReceiver(input: LaunchHubReceiverInput): Promise<
 
   const timeoutAt = Date.now() + (input.timeoutMs ?? 30_000)
   const pollIntervalMs = input.pollIntervalMs ?? 500
-  while (Date.now() < timeoutAt) {
-    const instances = await input.hub.listInstances()
-    const candidates = instances.filter((instance) => !before.has(instance.id) && instance.directory === input.directory)
-    candidates.sort((left, right) => right.registeredAt.localeCompare(left.registeredAt))
-    const [instance] = candidates
-    if (instance) {
-      const session = await tryFindNewSession(listSessions, beforeSessions, input.directory)
-      return { instance, pid: child.pid, prompt, sessionId: session?.id, model: input.model }
+  try {
+    while (Date.now() < timeoutAt) {
+      const instances = await input.hub.listInstances()
+      const candidates = instances.filter((instance) => !before.has(instance.id) && instance.directory === input.directory)
+      candidates.sort((left, right) => right.registeredAt.localeCompare(left.registeredAt))
+      const [instance] = candidates
+      if (instance) {
+        const session = await tryFindNewSession(listSessions, beforeSessions, input.directory)
+        const sessionId = session?.id
+        if (sessionId && child.pid) {
+          try { await saveReceiverPid(input.directory, sessionId, child.pid) } catch { /* best-effort */ }
+        }
+        return { instance, pid: child.pid, prompt, sessionId, model: input.model }
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
-    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+  } catch (error) {
+    killProcess(child.pid)
+    throw error
   }
 
+  killProcess(child.pid)
   throw new Error("Timed out waiting for launched OpenCode receiver to register with AgentSymphony hub")
+}
+
+async function saveReceiverPid(directory: string, sessionId: string, pid: number): Promise<void> {
+  const path = join(directory, ".agentsymphony", "pids", `session-${sessionId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 96)}.json`)
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, `${JSON.stringify({ pid })}\n`, "utf8")
+}
+
+export async function loadReceiverPid(directory: string, sessionId: string): Promise<number | undefined> {
+  try {
+    const raw = await readFile(join(directory, ".agentsymphony", "pids", `session-${sessionId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 96)}.json`), "utf8")
+    return JSON.parse(raw).pid as number
+  } catch {
+    return undefined
+  }
+}
+
+function killProcess(pid: number | undefined): void {
+  if (!pid) return
+  try { process.kill(pid, "SIGTERM") } catch { /* best-effort */ }
 }
 
 export async function resumeHubReceiver(input: ResumeHubReceiverInput): Promise<LaunchedHubReceiver> {
   const identityStore = input.identityStore ?? new FileInstanceIdentityStore()
   const identity = await identityStore.load(input.directory, input.sessionId)
   const prompt = DEFAULT_RESUME_PROMPT
-  const isSessionProcess = input.isSessionProcess ?? isOpenCodeSessionProcess
-  if (input.processId && await isSessionProcess(input.processId, input.sessionId)) {
-    const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)
-    return { instance, pid: input.processId, prompt, sessionId: input.sessionId, variant: input.variant, reused: true }
+
+  const oldPids = await findOpenCodePidsForSession(input.sessionId)
+  const recordedPid = await loadReceiverPid(input.directory, input.sessionId)
+  if (recordedPid !== undefined && !oldPids.includes(recordedPid)) {
+    oldPids.push(recordedPid)
+    const children = await findChildPids(recordedPid)
+    for (const pid of children) {
+      if (!oldPids.includes(pid)) oldPids.push(pid)
+    }
+  }
+  if (oldPids.length > 0) {
+    await killProcessesGracefully(oldPids)
+    const deadline = Date.now() + 5000
+    while (Date.now() < deadline) {
+      const instances = await input.hub.listInstances()
+      if (!instances.some((i) => i.id === identity.id)) break
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
   }
 
   const child = (input.spawnReceiver ?? spawnKittyResumedReceiver)(input.directory, input.title, input.sessionId, prompt, { variant: input.variant })
   if (!child.pid) throw new Error("OpenCode receiver process did not report a pid")
   child.unref()
 
-  const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)
-  return { instance, pid: child.pid, prompt, sessionId: input.sessionId, variant: input.variant, reused: false }
+  try {
+    const instance = await waitForResumedInstance(input.hub, identity.id, input.directory, input.timeoutMs ?? 30_000, input.pollIntervalMs ?? 500)
+    try { await saveReceiverPid(input.directory, input.sessionId, child.pid) } catch { /* best-effort */ }
+    return { instance, pid: child.pid, prompt, sessionId: input.sessionId, variant: input.variant, reused: false }
+  } catch (error) {
+    killProcess(child.pid)
+    throw error
+  }
 }
 
 async function waitForResumedInstance(hub: AgentSymphonyHub, instanceId: string, directory: string, timeoutMs: number, pollIntervalMs: number): Promise<HubInstance> {
@@ -115,7 +166,7 @@ async function waitForResumedInstance(hub: AgentSymphonyHub, instanceId: string,
 }
 
 function spawnKittyReceiver(directory: string, title: string | undefined, prompt: string, options: LaunchModelOptions = {}): { pid?: number; unref(): void } {
-  const args = ["--detach", "--working-directory", directory]
+  const args = ["--working-directory", directory]
   if (title) args.push("--title", title)
   const launch = buildOpenCodeLaunchArgs({ prompt, model: options.model })
   args.push(...launch.args)
@@ -123,7 +174,7 @@ function spawnKittyReceiver(directory: string, title: string | undefined, prompt
 }
 
 function spawnKittyResumedReceiver(directory: string, title: string | undefined, sessionId: string, prompt: string, options: ResumeModelOptions = {}): { pid?: number; unref(): void } {
-  const args = ["--detach", "--working-directory", directory]
+  const args = ["--working-directory", directory]
   if (title) args.push("--title", title)
   const launch = buildOpenCodeLaunchArgs({ sessionId, prompt, variant: options.variant })
   args.push(...launch.args)

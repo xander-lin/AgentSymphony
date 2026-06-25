@@ -30,6 +30,43 @@ describe("startHubConnector", () => {
     }
   })
 
+  it("continues processing remaining messages when tui injection fails for one message", async () => {
+    const hub = new MemoryAgentSymphonyHub()
+    const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })
+    const tui = new MockTuiController()
+    const replyContext = new MemoryReplyContextStore()
+    const connector = startHubConnector({
+      hub,
+      tui,
+      replyContext,
+      pollIntervalMs: 10,
+      identity: { id: "child", name: "child", directory: "/repo" },
+    })
+
+    try {
+      await waitFor(() => connector.getStatus().connected)
+      const status = connector.getStatus()
+      if (!status.connected) throw new Error("Expected connector to be connected")
+
+      const conv1 = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: status.instance.id, title: "first", threadName: "first" })
+      const conv2 = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: status.instance.id, title: "second", threadName: "second" })
+      await hub.sendMessage({ conversationId: conv1.id, fromInstanceId: parent.id, content: "message one" })
+      await hub.sendMessage({ conversationId: conv2.id, fromInstanceId: parent.id, content: "message two" })
+
+      tui.rejectOnNext = "injection failure"
+
+      await waitFor(() => tui.prompts.length >= 1)
+
+      expect(tui.prompts.some((p) => p.includes("message two"))).toBe(true)
+      expect(tui.prompts.some((p) => p.includes("message one"))).toBe(false)
+
+      const remaining = await hub.pollMessages(status.instance.id)
+      expect(remaining).toHaveLength(0)
+    } finally {
+      connector.stop()
+    }
+  })
+
   it("polls hub messages and injects them into the local TUI", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })

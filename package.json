@@ -20,13 +20,15 @@
     "README.md"
   ],
   "scripts": {
-    "build": "npm run dashboard:build && tsc -p tsconfig.build.json",
+    "build": "npm run dashboard:build && npm run build:plugin && npm run build:daemon",
     "dashboard:build": "vite build dashboard --outDir ../dist/dashboard --emptyOutDir",
     "hub": "tsx src/hub/daemon.ts",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "npm run typecheck && npm run dashboard:build && npm run test"
+    "verify": "npm run typecheck && npm run dashboard:build && npm run test",
+    "build:plugin": "tsc -p tsconfig.plugin.json",
+    "build:daemon": "tsc -p tsconfig.daemon.json"
   },
   "dependencies": {
     "@opencode-ai/plugin": "latest"

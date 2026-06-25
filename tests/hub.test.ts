@@ -33,18 +33,22 @@ describe("MemoryAgentSymphonyHub", () => {
     expect(inbox?.variant).toBe("high")
   })
 
-  it("allows only one conversation between the same two instances", async () => {
+  it("allows multiple conversations between the same two instances", async () => {
     const hub = new MemoryAgentSymphonyHub()
     const parent = await hub.registerInstance({ name: "parent", directory: "/repo" })
     const child = await hub.registerInstance({ name: "child", directory: "/repo" })
 
     const first = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "first", threadName: "first" })
-    const duplicate = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "second", threadName: "second" })
+    const second = await hub.createConversation({ parentInstanceId: parent.id, targetInstanceId: child.id, title: "second", threadName: "second" })
     const reversed = await hub.createConversation({ parentInstanceId: child.id, targetInstanceId: parent.id, title: "reverse", threadName: "reverse" })
 
-    expect(duplicate).toEqual(first)
-    expect(reversed).toEqual(first)
-    await expect(hub.listConversationsForInstance(parent.id)).resolves.toEqual([first])
+    expect(second.id).not.toEqual(first.id)
+    expect(reversed.id).not.toEqual(first.id)
+    expect(second.threadName).toBe("second")
+    expect(reversed.threadName).toBe("reverse")
+
+    const list = await hub.listConversationsForInstance(parent.id)
+    expect(list.map((c) => c.id).sort()).toEqual([first.id, second.id, reversed.id].sort())
   })
 
   it("lets a target plugin inject a routed message into its TUI", async () => {

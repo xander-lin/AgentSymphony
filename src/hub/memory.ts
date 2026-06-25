@@ -15,9 +15,10 @@ import type {
 
 export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
   private writeQueue = Promise.resolve()
+  private mutable: HubMaps | undefined
 
   constructor(
-    private readonly options: { instanceTtlMs?: number; now?: () => Date } = {},
+    private readonly options: { instanceTtlMs?: number; messageTtlMs?: number; pollLimit?: number; now?: () => Date } = {},
     private readonly store: HubStore = new MemoryHubStore(),
   ) {}
 
@@ -63,8 +64,6 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
       const snapshot = await this.loadSnapshot()
       this.assertLiveInstance(snapshot, input.parentInstanceId, "parent")
       this.assertLiveInstance(snapshot, input.targetInstanceId, "target")
-      const existing = this.findConversationBetween(snapshot, input.parentInstanceId, input.targetInstanceId)
-      if (existing) return existing
 
       const timestamp = this.nowIso()
       const conversation: HubConversation = {
@@ -193,12 +192,15 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
     return this.write(async () => {
       const snapshot = await this.loadSnapshot()
       this.assertLiveInstance(snapshot, instanceId, "polling")
-      const queued = [...snapshot.messages.values()].filter((message) => message.toInstanceId === instanceId && message.status === "queued")
-      for (const message of queued) {
+      const queued = [...snapshot.messages.values()]
+        .filter((message) => message.toInstanceId === instanceId && message.status === "queued")
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      const batch = queued.slice(0, this.options.pollLimit ?? 20)
+      for (const message of batch) {
         snapshot.messages.set(message.id, { ...message, status: "delivered" })
       }
       await this.saveSnapshot(snapshot)
-      return queued.map((message) => ({ ...message, status: "delivered" }))
+      return batch.map((message) => ({ ...message, status: "delivered" }))
     })
   }
 
@@ -235,6 +237,17 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
     return this.now().getTime() - new Date(instance.lastSeenAt).getTime() <= ttl
   }
 
+  private purgeExpiredMessages(snapshot: HubMaps): void {
+    const maxAgeMs = this.options.messageTtlMs
+    if (!maxAgeMs) return
+    const cutoff = this.now().getTime() - maxAgeMs
+    for (const [id, message] of snapshot.messages) {
+      if (message.status === "acknowledged" && new Date(message.createdAt).getTime() < cutoff) {
+        snapshot.messages.delete(id)
+      }
+    }
+  }
+
   private now(): Date {
     return this.options.now?.() ?? new Date()
   }
@@ -244,20 +257,24 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
   }
 
   private async loadSnapshot(): Promise<HubMaps> {
+    if (this.mutable) return this.mutable
     const snapshot = await this.store.load()
-    return this.normalizeSnapshot({
+    this.mutable = this.normalizeSnapshot({
       instances: new Map(snapshot.instances.map((instance) => [instance.id, instance])),
       conversations: new Map(snapshot.conversations.map((conversation) => [conversation.id, conversation])),
       messages: new Map(snapshot.messages.map((message) => [message.id, message])),
     })
+    return this.mutable
   }
 
   private async saveSnapshot(snapshot: HubMaps): Promise<void> {
+    this.purgeExpiredMessages(snapshot)
     await this.store.save({
       instances: [...snapshot.instances.values()],
       conversations: [...snapshot.conversations.values()],
       messages: [...snapshot.messages.values()],
     })
+    this.mutable = snapshot
   }
 
   private async write<T>(operation: () => Promise<T>): Promise<T> {
@@ -266,41 +283,8 @@ export class MemoryAgentSymphonyHub implements AgentSymphonyHub {
     return next
   }
 
-  private findConversationBetween(snapshot: HubMaps, leftInstanceId: string, rightInstanceId: string): HubConversation | undefined {
-    const pairKey = this.conversationPairKey(leftInstanceId, rightInstanceId)
-    return [...snapshot.conversations.values()].find((conversation) => this.conversationPairKey(conversation.parentInstanceId, conversation.targetInstanceId) === pairKey)
-  }
-
   private normalizeSnapshot(snapshot: HubMaps): HubMaps {
-    const conversationsByPair = new Map<string, HubConversation>()
-    const canonicalConversationIds = new Map<string, string>()
-    for (const conversation of [...snapshot.conversations.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))) {
-      const pairKey = this.conversationPairKey(conversation.parentInstanceId, conversation.targetInstanceId)
-      const canonical = conversationsByPair.get(pairKey)
-      if (canonical) {
-        canonicalConversationIds.set(conversation.id, canonical.id)
-        continue
-      }
-      conversationsByPair.set(pairKey, conversation)
-      canonicalConversationIds.set(conversation.id, conversation.id)
-    }
-
-    const messages = new Map<string, HubMessage>()
-    for (const message of snapshot.messages.values()) {
-      const conversationId = canonicalConversationIds.get(message.conversationId)
-      if (!conversationId) continue
-      messages.set(message.id, { ...message, conversationId })
-    }
-
-    return {
-      instances: snapshot.instances,
-      conversations: new Map([...conversationsByPair.values()].map((conversation) => [conversation.id, conversation])),
-      messages,
-    }
-  }
-
-  private conversationPairKey(leftInstanceId: string, rightInstanceId: string): string {
-    return [leftInstanceId, rightInstanceId].sort().join(":")
+    return snapshot
   }
 }
 

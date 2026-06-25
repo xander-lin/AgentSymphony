@@ -9,6 +9,7 @@ interface WindowStoreFile {
 
 export class FileTerminalWindowStore implements TerminalWindowStore {
   private readonly filePath: string
+  private writeQueue = Promise.resolve()
 
   constructor(private readonly rootDirectory: string) {
     this.filePath = join(rootDirectory, ".agentsymphony", "windows.json")
@@ -20,16 +21,20 @@ export class FileTerminalWindowStore implements TerminalWindowStore {
   }
 
   async set(record: TerminalWindowRecord): Promise<void> {
-    const store = await this.readStore()
-    const index = store.windows.findIndex((window) => window.conversationId === record.conversationId)
-    if (index === -1) store.windows.push(record)
-    else store.windows[index] = record
-    await this.writeStore(store)
+    await this.write(async () => {
+      const store = await this.readStore()
+      const index = store.windows.findIndex((window) => window.conversationId === record.conversationId)
+      if (index === -1) store.windows.push(record)
+      else store.windows[index] = record
+      await this.writeStore(store)
+    })
   }
 
   async delete(conversationId: string): Promise<void> {
-    const store = await this.readStore()
-    await this.writeStore({ windows: store.windows.filter((window) => window.conversationId !== conversationId) })
+    await this.write(async () => {
+      const store = await this.readStore()
+      await this.writeStore({ windows: store.windows.filter((window) => window.conversationId !== conversationId) })
+    })
   }
 
   private async readStore(): Promise<WindowStoreFile> {
@@ -45,6 +50,12 @@ export class FileTerminalWindowStore implements TerminalWindowStore {
   private async writeStore(store: WindowStoreFile): Promise<void> {
     await mkdir(join(this.rootDirectory, ".agentsymphony"), { recursive: true })
     await writeFile(this.filePath, `${JSON.stringify(store, null, 2)}\n`, "utf8")
+  }
+
+  private async write<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(operation, operation)
+    this.writeQueue = next.then(() => undefined, () => undefined)
+    return next
   }
 }
 

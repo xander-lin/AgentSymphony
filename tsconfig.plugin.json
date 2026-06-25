@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "src/plugin.ts",
+    "src/plugin-guidance.ts",
+    "src/plugin-utils.ts",
+    "src/model-catalog.ts",
+    "src/model-catalog/**/*.ts",
+    "src/team-guidance/**/*.ts",
+    "src/hub/types.ts",
+    "src/hub/store.ts",
+    "src/hub/http-client.ts",
+    "src/hub/connector.ts",
+    "src/hub/connector-mock.ts",
+    "src/hub/launcher-types.ts",
+    "src/hub/kitty-launcher.ts",
+    "src/hub/launcher-mock.ts",
+    "src/hub/receiver-launcher.ts",
+    "src/hub/reply-context.ts",
+    "src/hub/prompt.ts",
+    "src/hub/process.ts",
+    "src/hub/mock.ts",
+    "src/tui/**/*.ts",
+    "src/terminal/**/*.ts",
+    "src/runtime/**/*.ts",
+    "src/instance/**/*.ts",
+    "src/messages/**/*.ts",
+    "src/shared/**/*.ts"
+  ]
+}

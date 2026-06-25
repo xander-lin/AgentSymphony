@@ -11,7 +11,6 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
-  type Connection,
   type Edge,
   type Node,
   type NodeProps,
@@ -342,10 +341,26 @@ function Dashboard() {
     void deleteInstance(node.data.instance.id)
   }, [deleteInstance])
 
+  const hasExistingConversation = useCallback((sourceId: string, targetId: string) => {
+    return snapshot.conversations.some((c) =>
+      (c.parentInstanceId === sourceId && c.targetInstanceId === targetId) ||
+      (c.parentInstanceId === targetId && c.targetInstanceId === sourceId)
+    )
+  }, [snapshot.conversations])
+
+  const isValidConnection = useCallback((connection: { source: string; target: string }) => {
+    const sourceId = connection.source.startsWith("instance:") ? connection.source.slice(9) : null
+    const targetId = connection.target.startsWith("instance:") ? connection.target.slice(9) : null
+    if (!sourceId || !targetId) return false
+    if (sourceId === targetId) return false
+    if (hasExistingConversation(sourceId, targetId)) return false
+    return true
+  }, [hasExistingConversation])
+
   const onConnect = useCallback(async (params: { source: string; target: string }) => {
     const sourceId = params.source.startsWith("instance:") ? params.source.slice(9) : null
     const targetId = params.target.startsWith("instance:") ? params.target.slice(9) : null
-    if (!sourceId || !targetId || sourceId === targetId) return
+    if (!sourceId || !targetId || sourceId === targetId || hasExistingConversation(sourceId, targetId)) return
     try {
       await fetch("/conversations", {
         method: "POST",
@@ -356,7 +371,7 @@ function Dashboard() {
     } catch {
       // ignore connection errors
     }
-  }, [refresh])
+  }, [refresh, hasExistingConversation])
 
   return (
     <div className="app">
@@ -374,6 +389,7 @@ function Dashboard() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         connectionLineStyle={{ stroke: "#38bdf8", strokeWidth: 2 }}
         onNodeClick={(_, node) => setSelected(node)}
         onNodeContextMenu={(event, node) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, node }) }}

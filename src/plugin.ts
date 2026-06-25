@@ -1,6 +1,7 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { startHubConnector } from "./hub/connector.ts"
 import { HttpAgentSymphonyHubClient } from "./hub/http-client.ts"
+import { resolveHubUrl } from "./hub/hub-config.ts"
 import { launchHubReceiver, resumeHubReceiver, loadReceiverPid } from "./hub/receiver-launcher.ts"
 import { FileReplyContextStore } from "./hub/reply-context.ts"
 import type { HubMessage } from "./hub/types.ts"
@@ -31,7 +32,7 @@ export const AgentSymphonyPlugin: Plugin = async ({ directory, client }) => {
     return next
   }
   if (bootstrapSessionId) await bindSessionIdentity(bootstrapSessionId)
-  const hub = new HttpAgentSymphonyHubClient()
+  const hub = new HttpAgentSymphonyHubClient(await resolveHubUrl())
   const replyContext = new FileReplyContextStore(directory, () => identity?.id)
   const hubConnector = startHubConnector({ hub, identity: () => identity, tui: new OpenCodeTuiController(client, () => currentSessionId, directory), replyContext })
   let teamSystemGuidance: string | undefined

@@ -22,7 +22,7 @@ body { background: #faf8ff; color: #292524; font-family: Inter, ui-sans-serif, s
 .node-title { font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; color: #292524;  text-shadow: 0.4px 0.4px 0 #faf9f7, -0.4px -0.4px 0 #faf9f7, 0.4px -0.4px 0 #faf9f7, -0.4px 0.4px 0 #faf9f7; }
 .node-meta { margin-top: 10px; color: #a8a29e; font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 code { color: #65a30d; background: rgba(236, 252, 203, .5); padding: 2px 7px; border-radius: 8px; font-size: 12px; }
-.thread-name { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: #3f6212;  text-shadow: 0.5px 0.5px 0 #faf9f7, -0.5px -0.5px 0 #faf9f7, 0.5px -0.5px 0 #faf9f7, -0.5px 0.5px 0 #faf9f7; }
+.thread-name { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: #292524; }
 .thread-title { margin-top: 5px; color: #78716c; font-size: 13px; }
 .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 .badges span { border-radius: 999px; padding: 4px 9px; font-size: 12px; border: 1px solid rgba(132, 204, 22, .25); background: rgba(236, 252, 203, .4); color: #3f6212; }
